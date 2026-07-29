@@ -9,9 +9,10 @@ melhor ação financeira (**Next Best Action — NBA**), construído com **FastA
 ```
 Telegram → FastAPI webhook → validação (secret token + rate limit)
          → AgentExecutor (LangChain, tool-calling)
-              ├─ get_customer_profile  → CustomerService  → CustomerRepository
-              ├─ get_next_best_action  → NBAService       → NBAModelGateway (mock | SageMaker)
-              └─ get_products          → ProductsService  → CustomerRepository
+              ├─ get_customer_profile   → CustomerService      → CustomerRepository
+              ├─ get_next_best_action   → NBAService           → NBAModelGateway (mock | SageMaker)
+              ├─ get_products           → ProductsService      → CustomerRepository
+              └─ search_knowledge_base  → KnowledgeBaseService → KnowledgeBaseGateway (RAG, vector store)
          → resposta em linguagem natural → Telegram
 ```
 
@@ -21,7 +22,7 @@ Camadas (`src/financial_agent/`):
 |---|---|---|
 | Domain | `domain/` | Modelos Pydantic e contrato de erros estruturados. Sem I/O. |
 | Repository | `repositories/` | Abstrai onde os dados vivem (hoje: fakes em memória). |
-| Gateway | `gateways/` | Integrações externas (Telegram Bot API, modelo NBA). |
+| Gateway | `gateways/` | Integrações externas (Telegram Bot API, modelo NBA, vector store/RAG). |
 | Service | `services/` | Orquestração de casos de uso; traduz falhas em `ToolError`. |
 | Agent | `agent/` | Prompt, Tools, Output Parser, AgentExecutor (LangChain). |
 | Security | `security/` | Validação do webhook Telegram, auth de serviço, rate limit. |
@@ -56,9 +57,9 @@ o modelo NBA mockado → SageMaker) sem tocar nas demais.
 | Componente | Onde | Papel |
 |---|---|---|
 | Chat Model | `agent/llm_factory.py` | `ChatOpenAI`, construído uma vez por processo. |
-| System Prompt / Human Prompt | `agent/prompts/system_prompt_v1.py`, `agent/agent_executor.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana. |
+| System Prompt / Human Prompt | `agent/prompts/system_prompt_v2.py` (registrado em `prompt_registry.py`), `agent/agent_executor.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana. |
 | Output Parser | `agent/output_parser.py` | `PydanticOutputParser` estrutura a resposta do "filler agent"; o agente principal usa o parser interno do `create_openai_tools_agent`. |
-| Tool Calling | `agent/tools/*.py` | Três `StructuredTool`s com schema estreito e identidade vinculada por closure. |
+| Tool Calling | `agent/tools/*.py` | Quatro `StructuredTool`s com schema estreito e identidade vinculada por closure. |
 | Runnable | em toda parte | Prompt, LLM, parser e Tools são todos `Runnable`s componíveis com `|`. |
 | Agent Executor | `agent/agent_executor.py` | Laço que decide "chamar uma Tool" vs. "responder", com `handle_parsing_errors=True`. |
 
@@ -76,6 +77,40 @@ captura qualquer exceção e devolve sempre um `ToolEnvelope` serializado:
 Códigos de erro: `RATE_LIMITED`, `UPSTREAM_ERROR`, `NOT_FOUND`, `UNAUTHORIZED`,
 `VALIDATION_ERROR`, `UNKNOWN_ERROR` — nunca uma exceção crua chega ao laço do
 agente.
+
+## RAG — busca na base de conhecimento
+
+Das quatro Tools, `search_knowledge_base` é a única que faz Retrieval-Augmented
+Generation de verdade — as outras três fazem *lookup* estruturado (chamadas de
+função com schemas fixos), não busca semântica.
+
+```
+search_knowledge_base(query)
+    → KnowledgeBaseService (valida a query)
+        → KnowledgeBaseGateway (Protocol)
+            → InMemoryKnowledgeBaseGateway
+                → InMemoryVectorStore (langchain_core) + OpenAIEmbeddings
+                    → corpus estático de ~8 artigos (gateways/knowledge_base_gateway.py)
+```
+
+- O corpus (políticas/como-funciona de CDB, Tesouro Selic, seguros,
+  portabilidade de crédito, antecipação de parcelas etc.) é **embedado uma
+  única vez no startup** (`InMemoryKnowledgeBaseGateway.build`, chamado em
+  `api/app_state.py`), não a cada request.
+- `query` é o único campo do Input Schema desta Tool, e é o único caso em que
+  deixamos o LLM controlar livremente um parâmetro — porque ele não carrega
+  identidade nem filtra dados de outro cliente, só *o que* é buscado.
+- O System Prompt v2 instrui o agente a responder **apenas** com base no que
+  a ferramenta retornou, nunca preenchendo lacunas com conhecimento do
+  próprio modelo — e a nunca usar esta ferramenta no lugar de
+  `get_next_best_action` para recomendações personalizadas.
+- Troca de backend: `InMemoryVectorStore` é adequado para uma dúzia de
+  artigos estáticos; para produção/escala, implemente uma nova classe do
+  `KnowledgeBaseGateway` Protocol sobre um vector store real (pgvector,
+  Pinecone, OpenSearch, ...) — nenhuma outra camada muda.
+- Testes nunca chamam a API de embeddings real: usam
+  `DeterministicFakeEmbedding` (`langchain_core`), determinístico e sem rede
+  (ver `tests/conftest.py` e `tests/unit/test_knowledge_base_gateway.py`).
 
 ## Segurança
 

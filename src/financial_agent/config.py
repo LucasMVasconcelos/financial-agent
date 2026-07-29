@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     openai_api_key: str = "change-me"
     openai_model: str = "gpt-4o-mini"
     openai_temperature: float = 0.2
+    openai_embedding_model: str = "text-embedding-3-small"
 
     # LangSmith
     langchain_tracing_v2: bool = False

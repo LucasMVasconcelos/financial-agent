@@ -16,7 +16,8 @@ Request flow (mirrors the product spec step by step):
   7. A filler reply is fired concurrently (see `agent/filler_agent.py`) so
      the customer sees a response immediately while the main agent works.
   8. The main tool-calling agent runs (`agent/agent_executor.py`), which
-     internally calls `get_customer_profile` and `get_next_best_action`.
+     internally calls `get_customer_profile`, `get_next_best_action`, and/or
+     `search_knowledge_base` as needed.
   9. Both turns are persisted and the final answer is sent back via the
      Telegram Bot API.
 """
@@ -35,6 +36,7 @@ from financial_agent.api.deps import (
     get_conversation_service,
     get_customer_service,
     get_filler_agent,
+    get_knowledge_base_service,
     get_llm,
     get_nba_service,
     get_products_service,
@@ -55,6 +57,7 @@ from financial_agent.security.telegram_auth import (
 )
 from financial_agent.services.conversation_service import ConversationService
 from financial_agent.services.customer_service import CustomerService
+from financial_agent.services.knowledge_base_service import KnowledgeBaseService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
@@ -100,6 +103,7 @@ async def telegram_webhook(
     nba_service: NBAService = Depends(get_nba_service),
     products_service: ProductsService = Depends(get_products_service),
     conversation_service: ConversationService = Depends(get_conversation_service),
+    knowledge_base_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
     filler_agent: FillerAgent = Depends(get_filler_agent),
     llm: BaseChatModel = Depends(get_llm),
@@ -131,6 +135,7 @@ async def telegram_webhook(
         customer_service=customer_service,
         nba_service=nba_service,
         products_service=products_service,
+        knowledge_base_service=knowledge_base_service,
     )
     reply_text = await run_agent_turn(executor=executor, user_message=text, history=history)
 

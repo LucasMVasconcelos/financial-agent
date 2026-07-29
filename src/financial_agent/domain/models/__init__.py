@@ -6,12 +6,14 @@ from financial_agent.domain.models.conversation import (
     MessageRole,
 )
 from financial_agent.domain.models.customer import CustomerProfile, Product, RiskProfile
+from financial_agent.domain.models.knowledge import KnowledgeSnippet
 from financial_agent.domain.models.nba import NextBestActionCandidate, NextBestActionType
 
 __all__ = [
     "ConversationHistory",
     "ConversationMessage",
     "CustomerProfile",
+    "KnowledgeSnippet",
     "MessageRole",
     "NextBestActionCandidate",
     "NextBestActionType",

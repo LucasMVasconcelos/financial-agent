@@ -9,7 +9,7 @@ LangChain components used here, and why:
     a `MessagesPlaceholder` for prior turns, the current human message, and
     a `MessagesPlaceholder("agent_scratchpad")` where the agent's
     intermediate tool calls/observations get injected.
-  * **Tool Calling** — the three `StructuredTool`s from `agent/tools/`,
+  * **Tool Calling** — the four `StructuredTool`s from `agent/tools/`,
     bound per-request with the authenticated `user_id` baked in.
   * **Output Parser** — handled internally by `create_openai_tools_agent`
     (see `agent/output_parser.py` docstring for the split with the filler
@@ -37,10 +37,12 @@ from financial_agent.agent.tools import (
     build_get_customer_profile_tool,
     build_get_next_best_action_tool,
     build_get_products_tool,
+    build_search_knowledge_base_tool,
 )
 from financial_agent.domain.models.conversation import ConversationHistory, MessageRole
 from financial_agent.observability.logging import get_logger
 from financial_agent.services.customer_service import CustomerService
+from financial_agent.services.knowledge_base_service import KnowledgeBaseService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
@@ -71,12 +73,16 @@ def build_agent_executor(
     customer_service: CustomerService,
     nba_service: NBAService,
     products_service: ProductsService,
+    knowledge_base_service: KnowledgeBaseService,
 ) -> AgentExecutor:
     """Assemble a request-scoped AgentExecutor with identity-bound tools."""
     tools = [
         build_get_next_best_action_tool(user_id=user_id, nba_service=nba_service),
         build_get_customer_profile_tool(user_id=user_id, customer_service=customer_service),
         build_get_products_tool(user_id=user_id, products_service=products_service),
+        build_search_knowledge_base_tool(
+            user_id=user_id, knowledge_base_service=knowledge_base_service
+        ),
     ]
 
     prompt = ChatPromptTemplate.from_messages(

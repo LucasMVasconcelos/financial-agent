@@ -15,15 +15,35 @@ import json
 from financial_agent.agent.tools.get_customer_profile import build_get_customer_profile_tool
 from financial_agent.agent.tools.get_next_best_action import build_get_next_best_action_tool
 from financial_agent.agent.tools.get_products import build_get_products_tool
+from financial_agent.agent.tools.search_knowledge_base import build_search_knowledge_base_tool
+from financial_agent.domain.errors import ToolError as DomainToolError
 from financial_agent.domain.errors import ToolErrorCode
+from financial_agent.domain.models.knowledge import KnowledgeSnippet
 from financial_agent.gateways.nba_model_gateway import MockNBAModelGateway
 from financial_agent.repositories.customer_repository import InMemoryCustomerRepository
 from financial_agent.services.customer_service import CustomerService
+from financial_agent.services.knowledge_base_service import KnowledgeBaseService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
 KNOWN_USER_ID = 123
 UNKNOWN_USER_ID = 999_999
+
+
+class _StubKnowledgeBaseGateway:
+    def __init__(
+        self,
+        *,
+        snippets: list[KnowledgeSnippet] | None = None,
+        error: DomainToolError | None = None,
+    ) -> None:
+        self._snippets = snippets or []
+        self._error = error
+
+    async def search(self, query: str, *, top_k: int = 3) -> list[KnowledgeSnippet]:
+        if self._error is not None:
+            raise self._error
+        return self._snippets
 
 
 class TestGetNextBestActionToolContract:
@@ -129,3 +149,48 @@ class TestGetProductsToolContract:
 
         assert envelope["success"] is False
         assert envelope["error"]["code"] == ToolErrorCode.NOT_FOUND.value
+
+
+class TestSearchKnowledgeBaseToolContract:
+    def _build(
+        self,
+        *,
+        snippets: list[KnowledgeSnippet] | None = None,
+        error: DomainToolError | None = None,
+    ) -> object:
+        gateway = _StubKnowledgeBaseGateway(snippets=snippets, error=error)
+        return build_search_knowledge_base_tool(
+            user_id=KNOWN_USER_ID, knowledge_base_service=KnowledgeBaseService(gateway)
+        )
+
+    def test_input_schema_only_exposes_query(self) -> None:
+        tool = self._build()
+        assert set(tool.args_schema.model_fields.keys()) == {"query"}
+
+    async def test_success_envelope_matches_output_schema(self) -> None:
+        snippet = KnowledgeSnippet(
+            title="Tesouro Selic",
+            content="Título público pós-fixado que acompanha a Selic.",
+            source="tesouro_selic",
+            score=0.87,
+        )
+        tool = self._build(snippets=[snippet])
+
+        raw = await tool.ainvoke({"query": "como funciona o tesouro selic"})
+        envelope = json.loads(raw)
+
+        assert envelope["success"] is True
+        result = envelope["data"]["results"][0]
+        assert set(result.keys()) == {"title", "content", "source", "score"}
+        assert result["source"] == "tesouro_selic"
+
+    async def test_upstream_error_structured(self) -> None:
+        tool = self._build(
+            error=DomainToolError(ToolErrorCode.UPSTREAM_ERROR, "vector store down")
+        )
+
+        raw = await tool.ainvoke({"query": "tesouro selic"})
+        envelope = json.loads(raw)
+
+        assert envelope["success"] is False
+        assert envelope["error"]["code"] == ToolErrorCode.UPSTREAM_ERROR.value

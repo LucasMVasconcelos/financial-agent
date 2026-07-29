@@ -1,8 +1,10 @@
 """Shared pytest fixtures.
 
 Async fixtures build a real `AppState` (real in-memory repositories, real
-mock NBA gateway) but never touch the network: no test relies on an actual
-OpenAI or Telegram API call. Tests that reach the webhook monkeypatch the
+mock NBA gateway, real in-memory vector store) but never touch the network:
+no test relies on an actual OpenAI or Telegram API call — the knowledge
+base is embedded with a deterministic fake embeddings model instead of
+`OpenAIEmbeddings`. Tests that reach the webhook monkeypatch the
 agent-invocation and Telegram-sending call sites directly (see
 `tests/api/test_telegram_webhook.py`).
 """
@@ -14,6 +16,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from financial_agent.api.app_state import AppState, build_app_state, shutdown_app_state
 from financial_agent.config import Settings, get_settings
@@ -28,6 +31,14 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("APP_ENV", "local")
     get_settings.cache_clear()
+
+    # The knowledge base is embedded once at startup (build_app_state) — swap
+    # in a deterministic, network-free embeddings model so no test ever
+    # depends on a real OpenAI call to build the vector store.
+    monkeypatch.setattr(
+        "financial_agent.api.app_state.build_embeddings",
+        lambda _settings: DeterministicFakeEmbedding(size=32),
+    )
 
 
 @pytest.fixture

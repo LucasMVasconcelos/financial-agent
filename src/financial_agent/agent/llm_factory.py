@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from financial_agent.config import Settings
 
@@ -23,6 +23,13 @@ def build_chat_model(settings: Settings, *, temperature: float | None = None) ->
         api_key=settings.openai_api_key,
         timeout=20.0,
         max_retries=2,
+    )
+
+
+def build_embeddings(settings: Settings) -> OpenAIEmbeddings:
+    """Construct the Embeddings model backing `search_knowledge_base` (RAG)."""
+    return OpenAIEmbeddings(
+        model=settings.openai_embedding_model, openai_api_key=settings.openai_api_key
     )
 
 

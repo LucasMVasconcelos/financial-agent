@@ -19,6 +19,7 @@ from financial_agent.gateways.telegram_gateway import TelegramGateway
 from financial_agent.security.rate_limit import RateLimiter
 from financial_agent.services.conversation_service import ConversationService
 from financial_agent.services.customer_service import CustomerService
+from financial_agent.services.knowledge_base_service import KnowledgeBaseService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
@@ -50,6 +51,10 @@ def get_products_service(request: Request) -> ProductsService:
 
 def get_conversation_service(request: Request) -> ConversationService:
     return get_app_state(request).conversation_service
+
+
+def get_knowledge_base_service(request: Request) -> KnowledgeBaseService:
+    return get_app_state(request).knowledge_base_service
 
 
 def get_llm(request: Request) -> BaseChatModel:

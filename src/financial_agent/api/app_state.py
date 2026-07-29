@@ -15,8 +15,13 @@ import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from financial_agent.agent.filler_agent import FillerAgent
-from financial_agent.agent.llm_factory import build_chat_model, configure_langsmith_tracing
+from financial_agent.agent.llm_factory import (
+    build_chat_model,
+    build_embeddings,
+    configure_langsmith_tracing,
+)
 from financial_agent.config import Settings
+from financial_agent.gateways.knowledge_base_gateway import InMemoryKnowledgeBaseGateway
 from financial_agent.gateways.nba_model_gateway import (
     MockNBAModelGateway,
     NBAModelGateway,
@@ -28,6 +33,7 @@ from financial_agent.repositories.customer_repository import InMemoryCustomerRep
 from financial_agent.security.rate_limit import InMemoryRateLimiter, RateLimiter
 from financial_agent.services.conversation_service import ConversationService
 from financial_agent.services.customer_service import CustomerService
+from financial_agent.services.knowledge_base_service import KnowledgeBaseService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
@@ -41,6 +47,7 @@ class AppState:
     nba_service: NBAService
     products_service: ProductsService
     conversation_service: ConversationService
+    knowledge_base_service: KnowledgeBaseService
     llm: BaseChatModel
     filler_agent: FillerAgent
     rate_limiter: RateLimiter
@@ -66,6 +73,7 @@ async def build_app_state(settings: Settings) -> AppState:
     customer_repository = InMemoryCustomerRepository()
     conversation_repository = InMemoryConversationRepository()
     nba_model_gateway = _build_nba_model_gateway(settings)
+    knowledge_base_gateway = await InMemoryKnowledgeBaseGateway.build(build_embeddings(settings))
 
     llm = build_chat_model(settings)
 
@@ -77,6 +85,7 @@ async def build_app_state(settings: Settings) -> AppState:
         nba_service=NBAService(customer_repository, nba_model_gateway),
         products_service=ProductsService(customer_repository),
         conversation_service=ConversationService(conversation_repository),
+        knowledge_base_service=KnowledgeBaseService(knowledge_base_gateway),
         llm=llm,
         filler_agent=FillerAgent(llm),
         rate_limiter=InMemoryRateLimiter(
