@@ -17,7 +17,7 @@ Request flow (mirrors the product spec step by step):
      to pick the Model Router tier for this turn — cheap/utility model for
      straightforward questions, reasoning model for elaborate or
      loan-related ones.
-  8. The main tool-calling agent (`agent/agent_executor.py`) starts as a
+  8. The main tool-calling agent (`agent/main_graph.py`) starts as a
      background task. If it hasn't finished within
      `Settings.filler_delay_seconds`, a filler reply is fired (see
      `agent/filler_agent.py`) so the customer sees *something* while the
@@ -35,13 +35,15 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, Header
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from starlette import status
 
-from financial_agent.agent.agent_executor import build_agent_executor, run_agent_turn
 from financial_agent.agent.filler_agent import FillerAgent
+from financial_agent.agent.main_graph import build_main_graph, run_main_graph_turn
 from financial_agent.agent.model_router import ModelRouter
 from financial_agent.agent.query_complexity import classify_query_complexity
 from financial_agent.api.deps import (
+    get_checkpointer,
     get_conversation_service,
     get_customer_service,
     get_filler_agent,
@@ -120,6 +122,7 @@ async def telegram_webhook(
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
     filler_agent: FillerAgent = Depends(get_filler_agent),
     model_router: ModelRouter = Depends(get_model_router),
+    checkpointer: BaseCheckpointSaver[str] = Depends(get_checkpointer),
 ) -> dict[str, bool]:
     if update.message is None or not update.message.text:
         # Non-text update (sticker, edited message, etc.) — nothing to do.
@@ -136,7 +139,7 @@ async def telegram_webhook(
     complexity = classify_query_complexity(text)
     llm = model_router.for_complexity(complexity)
 
-    executor = build_agent_executor(
+    graph = build_main_graph(
         user_id=user_id,
         llm=llm,
         customer_service=customer_service,
@@ -144,9 +147,20 @@ async def telegram_webhook(
         products_service=products_service,
         knowledge_base_service=knowledge_base_service,
         loan_service=loan_service,
+        checkpointer=checkpointer,
     )
+    # thread_id = this update's id: gives crash-recovery "for free" (a restart
+    # mid-turn resumes from the last checkpointed node instead of losing the
+    # turn) without needing threads to persist *across* turns — each Telegram
+    # update is checkpointed as its own independent FSM run.
     agent_task = asyncio.create_task(
-        run_agent_turn(executor=executor, user_message=text, history=history)
+        run_main_graph_turn(
+            graph=graph,
+            thread_id=f"telegram:{update.update_id}",
+            user_id=user_id,
+            user_message=text,
+            history=history,
+        )
     )
 
     # Only send the filler if the agent is genuinely still working after the

@@ -10,6 +10,7 @@ verbatim from the AWS Lambda handler in `infra/aws/lambda_handler.py`.
 from __future__ import annotations
 
 from fastapi import Request
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from financial_agent.agent.filler_agent import FillerAgent
 from financial_agent.agent.model_router import ModelRouter
@@ -72,3 +73,7 @@ def get_filler_agent(request: Request) -> FillerAgent:
 
 def get_rate_limiter(request: Request) -> RateLimiter:
     return get_app_state(request).rate_limiter
+
+
+def get_checkpointer(request: Request) -> BaseCheckpointSaver[str]:
+    return get_app_state(request).checkpointer

@@ -9,9 +9,12 @@ codebase depends on. Swapping an implementation (e.g. in-memory repository
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
 
 import httpx
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 
 from financial_agent.agent.conversation_summarizer import ConversationSummarizer
 from financial_agent.agent.filler_agent import FillerAgent
@@ -54,6 +57,10 @@ class AppState:
     model_router: ModelRouter
     filler_agent: FillerAgent
     rate_limiter: RateLimiter
+    checkpointer: BaseCheckpointSaver[str]
+    # Owns the Redis connection's lifetime when `checkpointer` is Redis-backed
+    # (see `_build_checkpointer`); a no-op stack when it's the in-memory saver.
+    _checkpointer_exit_stack: AsyncExitStack = field(default_factory=AsyncExitStack)
 
 
 def _build_nba_model_gateway(settings: Settings) -> NBAModelGateway:
@@ -63,6 +70,32 @@ def _build_nba_model_gateway(settings: Settings) -> NBAModelGateway:
             region_name=settings.aws_region,
         )
     return MockNBAModelGateway()
+
+
+async def _build_checkpointer(
+    settings: Settings, exit_stack: AsyncExitStack
+) -> BaseCheckpointSaver[str]:
+    """Process-wide checkpointer shared by `main_graph.py` and `loan_graph.py`.
+
+    `Settings.use_redis` selects the backend — same flag `security/rate_limit.py`
+    uses, kept consistent rather than adding a second env var for the same
+    "are we in a real, multi-process deployment" question. `False` (the default,
+    and what the test suite runs with) keeps checkpoints in-process via
+    `MemorySaver`, so tests never need a live Redis. `True` requires
+    **Redis Stack** (`redis/redis-stack-server`, not plain `redis`) — the
+    checkpointer indexes state via RediSearch (`FT.*` commands), which plain
+    Redis doesn't have. See `docker-compose.yml`.
+    """
+    if not settings.use_redis:
+        return MemorySaver()
+
+    from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+
+    saver = await exit_stack.enter_async_context(
+        AsyncRedisSaver.from_conn_string(settings.redis_url)
+    )
+    await saver.asetup()
+    return saver
 
 
 async def build_app_state(settings: Settings) -> AppState:
@@ -91,11 +124,15 @@ async def build_app_state(settings: Settings) -> AppState:
         semantic_memory_service,
     )
 
+    checkpointer_exit_stack = AsyncExitStack()
+    checkpointer = await _build_checkpointer(settings, checkpointer_exit_stack)
+
     customer_service = CustomerService(customer_repository)
     loan_repository = InMemoryLoanRepository()
     loan_graph = build_loan_graph(
         customer_service=customer_service,
         approval_threshold=settings.loan_human_approval_threshold,
+        checkpointer=checkpointer,
     )
     loan_service = LoanService(
         graph=loan_graph,
@@ -119,9 +156,12 @@ async def build_app_state(settings: Settings) -> AppState:
             max_requests=settings.rate_limit_max_requests,
             window_seconds=settings.rate_limit_window_seconds,
         ),
+        checkpointer=checkpointer,
+        _checkpointer_exit_stack=checkpointer_exit_stack,
     )
 
 
 async def shutdown_app_state(state: AppState) -> None:
     # telegram_gateway wraps the same http_client instance, closing it once suffices.
     await state.telegram_gateway.aclose()
+    await state._checkpointer_exit_stack.aclose()

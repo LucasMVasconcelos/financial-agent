@@ -36,20 +36,19 @@ def _update_payload(*, text: str = "Olá, quero uma recomendação", user_id: in
 
 
 @pytest.fixture(autouse=True)
-def _stub_agent_and_telegram(
-    monkeypatch: pytest.MonkeyPatch, app_state: AppState
-) -> None:
+def _stub_agent_and_telegram(monkeypatch: pytest.MonkeyPatch, app_state: AppState) -> None:
     """Replace the LLM-backed agent turn and outbound Telegram calls with stubs."""
     monkeypatch.setattr(
-        "financial_agent.api.routers.telegram_webhook.build_agent_executor",
+        "financial_agent.api.routers.telegram_webhook.build_main_graph",
         lambda **_kwargs: object(),
     )
 
-    async def _fake_run_agent_turn(**_kwargs: object) -> str:
+    async def _fake_run_main_graph_turn(**_kwargs: object) -> str:
         return "Recomendamos investir em CDB."
 
     monkeypatch.setattr(
-        "financial_agent.api.routers.telegram_webhook.run_agent_turn", _fake_run_agent_turn
+        "financial_agent.api.routers.telegram_webhook.run_main_graph_turn",
+        _fake_run_main_graph_turn,
     )
 
     app_state.filler_agent.generate = AsyncMock(  # type: ignore[method-assign]
@@ -133,12 +132,13 @@ class TestTelegramWebhookFiller:
     ) -> None:
         app_state.settings.filler_delay_seconds = 0.05
 
-        async def _slow_run_agent_turn(**_kwargs: object) -> str:
+        async def _slow_run_main_graph_turn(**_kwargs: object) -> str:
             await asyncio.sleep(0.2)
             return "Recomendamos investir em CDB."
 
         monkeypatch.setattr(
-            "financial_agent.api.routers.telegram_webhook.run_agent_turn", _slow_run_agent_turn
+            "financial_agent.api.routers.telegram_webhook.run_main_graph_turn",
+            _slow_run_main_graph_turn,
         )
 
         response = await client.post(

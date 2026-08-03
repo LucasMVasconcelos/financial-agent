@@ -50,7 +50,7 @@ from tests.golden.schema import (  # noqa: E402
     load_golden_transcripts,
 )
 
-from financial_agent.agent.agent_executor import build_agent_executor, run_agent_turn  # noqa: E402
+from financial_agent.agent.main_graph import build_main_graph, run_main_graph_turn  # noqa: E402
 from financial_agent.agent.model_router import ModelActivity  # noqa: E402
 from financial_agent.agent.query_complexity import classify_query_complexity  # noqa: E402
 from financial_agent.api.app_state import build_app_state, shutdown_app_state  # noqa: E402
@@ -93,8 +93,7 @@ def _check_tool_calls(
             matches = [
                 args
                 for name, args in actual
-                if name == assertion.tool_name
-                and assertion.input_contains.items() <= args.items()
+                if name == assertion.tool_name and assertion.input_contains.items() <= args.items()
             ]
             if not matches:
                 failures.append(
@@ -123,9 +122,9 @@ async def _run_one(transcript: GoldenTranscript) -> list[str]:
     try:
         history = ConversationHistory(user_id=transcript.user_id)
         final_response = ""
-        for turn in transcript.turns:
+        for turn_index, turn in enumerate(transcript.turns):
             llm = app_state.model_router.for_complexity(classify_query_complexity(turn))
-            executor = build_agent_executor(
+            graph = build_main_graph(
                 user_id=transcript.user_id,
                 llm=llm,
                 customer_service=app_state.customer_service,
@@ -133,9 +132,12 @@ async def _run_one(transcript: GoldenTranscript) -> list[str]:
                 products_service=app_state.products_service,
                 knowledge_base_service=app_state.knowledge_base_service,
                 loan_service=app_state.loan_service,
+                checkpointer=app_state.checkpointer,
             )
-            final_response = await run_agent_turn(
-                executor=executor.with_config(callbacks=[recorder]),
+            final_response = await run_main_graph_turn(
+                graph=graph.with_config(callbacks=[recorder]),
+                thread_id=f"golden:{transcript.id}:{turn_index}",
+                user_id=transcript.user_id,
                 user_message=turn,
                 history=history,
             )

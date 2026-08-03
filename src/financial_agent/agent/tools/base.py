@@ -8,7 +8,7 @@ Every Tool in this project follows the same shape:
   2. **Identity-required dispatch** — the concrete `StructuredTool` instance
      is built per-request by a factory function that closes over the
      authenticated `user_id` (see `agent/tools/get_next_best_action.py` etc,
-     and `agent/agent_executor.py` where the factories are invoked). The LLM
+     and `agent/main_graph.py` where the factories are invoked). The LLM
      can never inject or override whose data it reads.
   3. **Narrow, strongly-typed output schema**, wrapped in `ToolEnvelope` so
      both success and structured-error paths share one serialization shape.

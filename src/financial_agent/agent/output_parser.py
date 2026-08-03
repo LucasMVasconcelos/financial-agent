@@ -2,11 +2,11 @@
 
 Two distinct output-parsing responsibilities exist in this project:
 
-  1. The main conversational agent (`agent/agent_executor.py`) is built
-     with `create_openai_tools_agent`, which already wires up LangChain's
-     `OpenAIToolsAgentOutputParser` internally — it has to, in order to
-     distinguish "call this tool" turns from "final answer" turns. We do
-     not reimplement that; `AgentExecutor` owns it.
+  1. The main conversational agent (`agent/main_graph.py`) calls
+     `llm.bind_tools(tools)` directly and reads the native
+     `AIMessage.tool_calls` field the `reason` node's routing function
+     checks — no separate parser needed, since tool-calling models already
+     return that distinction structurally rather than as text to parse.
   2. The "filler" chain (`agent/filler_agent.py`) is a plain LCEL
      `prompt | llm | parser` pipeline with *no* tools, used to keep the
      customer engaged while the main agent's tool-calling turn is still in

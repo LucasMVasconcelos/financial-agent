@@ -1,8 +1,8 @@
 """Loan origination flow — the project's one stateful, checkpointed, Plan-and-Execute-style flow.
 
 Every other capability in this agent is a single read-only Tool call,
-handled fine by the ReAct loop in `agent_executor.py`: decide, act, observe,
-repeat. Loan origination is different in kind, not just degree — it is the
+handled fine by the ReAct loop in `agent/main_graph.py`: decide, act,
+observe, repeat. Loan origination is different in kind, not just degree — it is the
 project's only *mutating* action, its outcome can require an indeterminate
 wait for a human decision, and that wait must survive well past the
 lifetime of the Telegram request that triggered it. A ReAct tool call can't
@@ -16,8 +16,8 @@ once, `route_by_amount` decides the whole path upfront (auto-approve vs.
 human review) based on `Settings.loan_human_approval_threshold`, and nothing
 re-negotiates that decision later — the only thing a second invocation can
 do is supply the human's verdict and let `finalize` run. Compare with
-`agent_executor.py`'s docstring on why ReAct fits the other four tools; this
-is the flow where that tradeoff flips.
+`agent/main_graph.py`'s docstring on why the ReAct cycle fits the other
+four tools; this is the flow where that tradeoff flips.
 
 State transitions:
 
@@ -41,6 +41,7 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -64,11 +65,20 @@ class LoanGraphState(TypedDict):
 
 
 def build_loan_graph(
-    *, customer_service: CustomerService, approval_threshold: float
+    *,
+    customer_service: CustomerService,
+    approval_threshold: float,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> CompiledStateGraph:
     """Compile the loan graph, closing over its collaborators (identity-bound, same
     spirit as the Tool factories in `agent/tools/*.py`: dependencies are wired in at
     construction time, never rediscovered from LLM-controlled input).
+
+    `checkpointer` defaults to a fresh `MemorySaver` (handy for the unit tests in
+    `tests/unit/test_loan_graph.py`, which don't care about the backend); production
+    wiring (`api/app_state.py`) passes in the process-wide checkpointer shared with
+    `agent/main_graph.py` — see that module's docstring for why this stays a separate
+    graph rather than being folded into the main one.
     """
 
     async def assess(state: LoanGraphState) -> dict[str, object]:
@@ -130,4 +140,4 @@ def build_loan_graph(
     )
     builder.add_edge(_FINALIZE, END)
 
-    return builder.compile(checkpointer=MemorySaver())
+    return builder.compile(checkpointer=checkpointer or MemorySaver())
