@@ -7,7 +7,11 @@ readme = "README.md"
 packages = [{ include = "financial_agent", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+# Upper-bounded (not just "^3.12"): langgraph-checkpoint-redis caps its own
+# support at <3.14, and Poetry resolves against the whole declared range, not
+# just the interpreter actually running — an unbounded range makes the
+# solver reject the dependency outright instead of just ignoring 3.14+.
+python = ">=3.12,<3.14"
 fastapi = "^0.115.0"
 uvicorn = { extras = ["standard"], version = "^0.32.0" }
 pydantic = "^2.9.0"

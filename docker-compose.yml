@@ -19,8 +19,12 @@ services:
   # FT.* commands) — plain Redis doesn't have that module, checkpoint
   # save/load fails immediately without it. See "Persistência de estado no
   # Redis" in the README for why this branch needs it and master doesn't.
+  # Pinned (not :latest): the :latest tag on Docker Hub was broken at the
+  # time this was set up (container exited immediately with
+  # "exec format error" even on a matching amd64 host) — 7.4.0-v3 is the
+  # last version confirmed working; bump deliberately, don't float it.
   redis:
-    image: redis/redis-stack-server:latest
+    image: redis/redis-stack-server:7.4.0-v3
     container_name: financial-agent-redis
     ports:
       - "6379:6379"
