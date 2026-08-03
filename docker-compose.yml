@@ -25,3 +25,24 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+  # Tunnel de desenvolvimento: expõe a API publicamente para o Telegram
+  # alcançar o webhook. Usa um domínio estático (NGROK_DOMAIN) para que a
+  # URL não mude a cada restart — diferente de um túnel efêmero (ex.:
+  # trycloudflare.com), aqui o setWebhook do Telegram só precisa ser feito
+  # uma vez. Ver "Configurar o bot do Telegram" no README.
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: financial-agent-ngrok
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      - "--url=https://${NGROK_DOMAIN}"
+      - "api:8000"
+    ports:
+      - "4040:4040" # painel local do ngrok (inspecionar requisições recebidas)
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

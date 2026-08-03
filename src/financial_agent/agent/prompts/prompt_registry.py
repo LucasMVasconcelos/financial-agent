@@ -10,13 +10,17 @@ from __future__ import annotations
 
 from financial_agent.agent.prompts.system_prompt_v1 import SYSTEM_PROMPT_V1
 from financial_agent.agent.prompts.system_prompt_v2 import SYSTEM_PROMPT_V2
+from financial_agent.agent.prompts.system_prompt_v3 import SYSTEM_PROMPT_V3
+from financial_agent.agent.prompts.system_prompt_v4 import SYSTEM_PROMPT_V4
 
 _REGISTRY: dict[str, str] = {
     "v1": SYSTEM_PROMPT_V1,
     "v2": SYSTEM_PROMPT_V2,
+    "v3": SYSTEM_PROMPT_V3,
+    "v4": SYSTEM_PROMPT_V4,
 }
 
-ACTIVE_SYSTEM_PROMPT_VERSION = "v2"
+ACTIVE_SYSTEM_PROMPT_VERSION = "v4"
 
 
 def get_active_system_prompt() -> str:

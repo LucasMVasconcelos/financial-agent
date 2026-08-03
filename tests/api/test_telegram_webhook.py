@@ -9,6 +9,7 @@ or the live Telegram API.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -112,18 +113,48 @@ class TestTelegramWebhookHappyPath:
         assert response.status_code == 200
         assert response.json() == {"ok": True}
 
-        # Two sends are expected by design: the filler acknowledgement (sent
-        # concurrently while the agent works) and the final agent reply.
+        # A fast turn (the stub resolves instantly) must send exactly one
+        # reply — no filler, since the customer never had to wait.
         send_message_mock = app_state.telegram_gateway.send_message  # type: ignore[attr-defined]
-        assert send_message_mock.await_count == 2
-        sent_texts = [call.kwargs["text"] for call in send_message_mock.await_args_list]
-        assert "Recomendamos investir em CDB." in sent_texts
+        send_message_mock.assert_awaited_once()
+        assert send_message_mock.await_args.kwargs["text"] == "Recomendamos investir em CDB."
+        app_state.filler_agent.generate.assert_not_called()  # type: ignore[attr-defined]
 
-        history = await app_state.conversation_service.get_history(123)
+        history = await app_state.conversation_service.get_history(123, current_message="oi")
         assert [m.content for m in history.messages] == [
             "Olá, quero uma recomendação",
             "Recomendamos investir em CDB.",
         ]
+
+
+class TestTelegramWebhookFiller:
+    async def test_slow_agent_triggers_filler_before_the_real_reply(
+        self, client: AsyncClient, app_state: AppState, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app_state.settings.filler_delay_seconds = 0.05
+
+        async def _slow_run_agent_turn(**_kwargs: object) -> str:
+            await asyncio.sleep(0.2)
+            return "Recomendamos investir em CDB."
+
+        monkeypatch.setattr(
+            "financial_agent.api.routers.telegram_webhook.run_agent_turn", _slow_run_agent_turn
+        )
+
+        response = await client.post(
+            WEBHOOK_URL,
+            json=_update_payload(user_id=123),
+            headers={TELEGRAM_SECRET_HEADER: VALID_SECRET},
+        )
+
+        assert response.status_code == 200
+
+        send_message_mock = app_state.telegram_gateway.send_message  # type: ignore[attr-defined]
+        assert send_message_mock.await_count == 2
+        sent_texts = [call.kwargs["text"] for call in send_message_mock.await_args_list]
+        assert "Recomendamos investir em CDB." in sent_texts
+        assert "Já te respondo!" in sent_texts
+        app_state.filler_agent.generate.assert_awaited_once()  # type: ignore[attr-defined]
 
 
 class TestTelegramWebhookRateLimit:

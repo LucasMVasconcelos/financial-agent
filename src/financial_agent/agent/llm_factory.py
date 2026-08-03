@@ -1,9 +1,11 @@
 """Chat Model construction and LangSmith tracing bootstrap.
 
 Centralizing model construction here means swapping providers (OpenAI ->
-Azure OpenAI, Anthropic, a local vLLM endpoint, ...) touches one file. All
-LangChain `Runnable`s in this project (the tool-calling agent, the filler
-chain) are built from the same `ChatModel` instance type returned here.
+Azure OpenAI, Anthropic, a local vLLM endpoint, ...) touches one file.
+`build_chat_model` takes an explicit `model` name rather than reading one
+fixed setting — that's what lets `agent/model_router.py` build two
+differently-sized clients (reasoning vs. utility tier) from the same
+factory instead of duplicating construction logic.
 """
 
 from __future__ import annotations
@@ -15,10 +17,12 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from financial_agent.config import Settings
 
 
-def build_chat_model(settings: Settings, *, temperature: float | None = None) -> ChatOpenAI:
-    """Construct the LangChain Chat Model used by every agent Runnable."""
+def build_chat_model(
+    settings: Settings, *, model: str, temperature: float | None = None
+) -> ChatOpenAI:
+    """Construct a LangChain Chat Model client for the given `model` name."""
     return ChatOpenAI(
-        model=settings.openai_model,
+        model=model,
         temperature=settings.openai_temperature if temperature is None else temperature,
         api_key=settings.openai_api_key,
         timeout=20.0,

@@ -75,3 +75,8 @@ class ValidationAppError(AppError):
 class RateLimitedAppError(AppError):
     def __init__(self, message: str = "Too many requests") -> None:
         super().__init__(ToolErrorCode.RATE_LIMITED, message, http_status=429)
+
+
+class NotFoundAppError(AppError):
+    def __init__(self, message: str = "Resource not found") -> None:
+        super().__init__(ToolErrorCode.NOT_FOUND, message, http_status=404)

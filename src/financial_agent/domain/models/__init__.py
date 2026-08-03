@@ -7,6 +7,7 @@ from financial_agent.domain.models.conversation import (
 )
 from financial_agent.domain.models.customer import CustomerProfile, Product, RiskProfile
 from financial_agent.domain.models.knowledge import KnowledgeSnippet
+from financial_agent.domain.models.loan import LoanApplication, LoanStatus
 from financial_agent.domain.models.nba import NextBestActionCandidate, NextBestActionType
 
 __all__ = [
@@ -14,6 +15,8 @@ __all__ = [
     "ConversationMessage",
     "CustomerProfile",
     "KnowledgeSnippet",
+    "LoanApplication",
+    "LoanStatus",
     "MessageRole",
     "NextBestActionCandidate",
     "NextBestActionType",

@@ -10,9 +10,9 @@ verbatim from the AWS Lambda handler in `infra/aws/lambda_handler.py`.
 from __future__ import annotations
 
 from fastapi import Request
-from langchain_core.language_models.chat_models import BaseChatModel
 
 from financial_agent.agent.filler_agent import FillerAgent
+from financial_agent.agent.model_router import ModelRouter
 from financial_agent.api.app_state import AppState
 from financial_agent.config import Settings
 from financial_agent.gateways.telegram_gateway import TelegramGateway
@@ -20,6 +20,7 @@ from financial_agent.security.rate_limit import RateLimiter
 from financial_agent.services.conversation_service import ConversationService
 from financial_agent.services.customer_service import CustomerService
 from financial_agent.services.knowledge_base_service import KnowledgeBaseService
+from financial_agent.services.loan_service import LoanService
 from financial_agent.services.nba_service import NBAService
 from financial_agent.services.products_service import ProductsService
 
@@ -57,8 +58,12 @@ def get_knowledge_base_service(request: Request) -> KnowledgeBaseService:
     return get_app_state(request).knowledge_base_service
 
 
-def get_llm(request: Request) -> BaseChatModel:
-    return get_app_state(request).llm
+def get_loan_service(request: Request) -> LoanService:
+    return get_app_state(request).loan_service
+
+
+def get_model_router(request: Request) -> ModelRouter:
+    return get_app_state(request).model_router
 
 
 def get_filler_agent(request: Request) -> FillerAgent:

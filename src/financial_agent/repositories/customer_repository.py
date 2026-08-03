@@ -64,6 +64,28 @@ class InMemoryCustomerRepository:
                 ],
                 created_at=datetime(2023, 7, 2, tzinfo=UTC),
             ),
+            1_140_762_405: CustomerProfile(
+                user_id=1_140_762_405,
+                full_name="Cliente Telegram",
+                segment="varejo",
+                risk_profile=RiskProfile.MODERATE,
+                account_balance=12_000.00,
+                products=[
+                    Product(
+                        code="conta_corrente",
+                        name="Conta Corrente",
+                        category="conta",
+                        owned_by_customer=True,
+                    ),
+                    Product(
+                        code="cartao_black",
+                        name="Cartão Black",
+                        category="cartao",
+                        owned_by_customer=True,
+                    ),
+                ],
+                created_at=datetime(2024, 11, 20, tzinfo=UTC),
+            ),
         }
 
     async def get_by_id(self, user_id: int) -> CustomerProfile | None:

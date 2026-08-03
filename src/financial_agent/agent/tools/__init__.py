@@ -3,11 +3,13 @@
 from financial_agent.agent.tools.get_customer_profile import build_get_customer_profile_tool
 from financial_agent.agent.tools.get_next_best_action import build_get_next_best_action_tool
 from financial_agent.agent.tools.get_products import build_get_products_tool
+from financial_agent.agent.tools.request_loan import build_request_loan_tool
 from financial_agent.agent.tools.search_knowledge_base import build_search_knowledge_base_tool
 
 __all__ = [
     "build_get_customer_profile_tool",
     "build_get_next_best_action_tool",
     "build_get_products_tool",
+    "build_request_loan_tool",
     "build_search_knowledge_base_tool",
 ]

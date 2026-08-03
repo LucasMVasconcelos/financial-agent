@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from financial_agent.api.app_state import build_app_state, shutdown_app_state
 from financial_agent.api.middleware.correlation_id import CorrelationIdMiddleware
-from financial_agent.api.routers import health, telegram_webhook
+from financial_agent.api.routers import admin_loans, health, telegram_webhook
 from financial_agent.config import get_settings
 from financial_agent.domain.errors import AppError
 from financial_agent.observability.logging import configure_logging, get_logger
@@ -53,3 +53,4 @@ async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
 
 app.include_router(health.router)
 app.include_router(telegram_webhook.router)
+app.include_router(admin_loans.router)

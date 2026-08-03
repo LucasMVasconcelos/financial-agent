@@ -8,11 +8,16 @@ melhor ação financeira (**Next Best Action — NBA**), construído com **FastA
 
 ```
 Telegram → FastAPI webhook → validação (secret token + rate limit)
-         → AgentExecutor (LangChain, tool-calling)
+         → classificação de complexidade → Model Router (tier reasoning | utility)
+         → AgentExecutor (LangChain, tool-calling / ReAct)
               ├─ get_customer_profile   → CustomerService      → CustomerRepository
               ├─ get_next_best_action   → NBAService           → NBAModelGateway (mock | SageMaker)
               ├─ get_products           → ProductsService      → CustomerRepository
-              └─ search_knowledge_base  → KnowledgeBaseService → KnowledgeBaseGateway (RAG, vector store)
+              ├─ search_knowledge_base  → KnowledgeBaseService → KnowledgeBaseGateway (RAG, vector store)
+              └─ request_loan           → LoanService          → LoanGraph (LangGraph, checkpointed)
+                                                                      ├─ valor ≤ limite → aprova automaticamente
+                                                                      └─ valor > limite → pausa (PENDING_APPROVAL)
+                                                                            → admin aprova/rejeita → retoma → notifica cliente
          → resposta em linguagem natural → Telegram
 ```
 
@@ -24,7 +29,7 @@ Camadas (`src/financial_agent/`):
 | Repository | `repositories/` | Abstrai onde os dados vivem (hoje: fakes em memória). |
 | Gateway | `gateways/` | Integrações externas (Telegram Bot API, modelo NBA, vector store/RAG). |
 | Service | `services/` | Orquestração de casos de uso; traduz falhas em `ToolError`. |
-| Agent | `agent/` | Prompt, Tools, Output Parser, AgentExecutor (LangChain). |
+| Agent | `agent/` | Prompt, Tools, Output Parser, AgentExecutor (LangChain) e o fluxo de empréstimo (LangGraph). |
 | Security | `security/` | Validação do webhook Telegram, auth de serviço, rate limit. |
 | Observability | `observability/` | Logs estruturados (structlog), correlation id, tracing. |
 | API | `api/` | FastAPI: routers, middleware, injeção de dependências. |
@@ -56,16 +61,17 @@ o modelo NBA mockado → SageMaker) sem tocar nas demais.
 
 | Componente | Onde | Papel |
 |---|---|---|
-| Chat Model | `agent/llm_factory.py` | `ChatOpenAI`, construído uma vez por processo. |
-| System Prompt / Human Prompt | `agent/prompts/system_prompt_v2.py` (registrado em `prompt_registry.py`), `agent/agent_executor.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana. |
+| Chat Model | `agent/llm_factory.py` + `agent/model_router.py` | `ChatOpenAI`, construído em duas variantes (reasoning/utility) por processo — ver "Model Router" abaixo. |
+| System Prompt / Human Prompt | `agent/prompts/system_prompt_v4.py` (registrado em `prompt_registry.py`), `agent/agent_executor.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana. |
 | Output Parser | `agent/output_parser.py` | `PydanticOutputParser` estrutura a resposta do "filler agent"; o agente principal usa o parser interno do `create_openai_tools_agent`. |
-| Tool Calling | `agent/tools/*.py` | Quatro `StructuredTool`s com schema estreito e identidade vinculada por closure. |
+| Tool Calling | `agent/tools/*.py` | Cinco `StructuredTool`s com schema estreito e identidade vinculada por closure — quatro somente-leitura, uma (`request_loan`) com efeito real. |
 | Runnable | em toda parte | Prompt, LLM, parser e Tools são todos `Runnable`s componíveis com `|`. |
-| Agent Executor | `agent/agent_executor.py` | Laço que decide "chamar uma Tool" vs. "responder", com `handle_parsing_errors=True`. |
+| Agent Executor | `agent/agent_executor.py` | Laço ReAct que decide "chamar uma Tool" vs. "responder", com `handle_parsing_errors=True`. Cobre as quatro Tools de leitura + o disparo do `request_loan`. |
+| LangGraph (`StateGraph` + checkpointer) | `agent/loan_graph.py` | Fluxo à parte, estilo Plan-and-Execute, só para originação de empréstimo — ver seção "Empréstimos" abaixo para o porquê de não usar o `AgentExecutor` aqui. |
 
 ## Tools — contrato
 
-Cada Tool (`agent/tools/get_*.py`) segue: input schema estreito → identidade
+Cada Tool (`agent/tools/*.py`) segue: input schema estreito → identidade
 via closure (nunca via LLM) → handler → `run_tool` (`agent/tools/base.py`)
 captura qualquer exceção e devolve sempre um `ToolEnvelope` serializado:
 
@@ -112,6 +118,154 @@ search_knowledge_base(query)
   `DeterministicFakeEmbedding` (`langchain_core`), determinístico e sem rede
   (ver `tests/conftest.py` e `tests/unit/test_knowledge_base_gateway.py`).
 
+## Model Router — modelo menor vs. modelo maior, por atividade e por complexidade
+
+`agent/model_router.py` mantém dois clientes `ChatOpenAI` já construídos no
+startup e roteia em **dois eixos independentes**:
+
+**Por atividade** (`for_activity`, fixo por call site):
+
+| Atividade | Tier | Por quê |
+|---|---|---|
+| `AGENT_REASONING` | **reasoning** (`OPENAI_REASONING_MODEL`, padrão `gpt-4o`) | Decide qual tool chamar, segue os guardrails de compliance, escreve a resposta final. |
+| `FILLER_REPLY` (mensagem de espera) | **utility** (`OPENAI_UTILITY_MODEL`, padrão `gpt-4o-mini`) | Frase curta, sem tools, sem guardrails de compliance — latência importa mais que qualidade aqui. |
+| `SUMMARIZATION` (compressão de histórico) | **utility** | Compressão de texto é tarefa mecânica, não julgamento. |
+
+O filler **só é enviado se o agente principal ainda não respondeu depois de
+`FILLER_DELAY_SECONDS`** (padrão 2,5s) — `telegram_webhook.py` roda o agente
+como task em background e só dispara o filler se ela não terminou dentro do
+prazo. Enviar o filler incondicionalmente faria a mensagem de espera chegar
+colada na resposta real em qualquer turno rápido (a maioria), parecendo
+duas respostas/spam em vez de uma UX de latência percebida.
+
+**Por complexidade da mensagem** (`for_complexity`, decidido a cada turno pelo
+webhook): `agent/query_complexity.py::classify_query_complexity` classifica
+cada mensagem como `SIMPLE` ou `COMPLEX` com uma heurística **determinística
+e sem chamada de LLM** (tamanho da mensagem, palavras-sinal de comparação/
+justificativa, menção a empréstimo, múltiplas perguntas no mesmo texto) —
+gastar uma chamada de modelo só para decidir qual modelo usar anularia o
+ganho que o roteamento existe para dar. `SIMPLE` usa o tier utility,
+`COMPLEX` usa o tier reasoning — é essa escolha, não `AGENT_REASONING` fixo,
+que decide o modelo do `AgentExecutor` a cada turno (`telegram_webhook.py`).
+
+### ReAct no modelo pequeno, Plan-and-Execute (LangGraph) no fluxo complexo
+
+A combinação intuitiva ("modelo grande = técnica mais sofisticada") não é o
+que está implementado, de propósito. Perguntas simples e complexas usam o
+**mesmo** `AgentExecutor`/ReAct — só troca o tamanho do modelo por baixo,
+porque decidir "chamar 1 tool ou responder" não muda de forma com o tamanho
+da pergunta. Onde a técnica realmente muda é no pedido de empréstimo: por
+ser a única ação com efeito real, sempre tratada com o tier reasoning, e por
+precisar de um plano revisável com um ponto de pausa para aprovação humana —
+é aí que o `LoanGraph` (LangGraph, estilo Plan-and-Execute) entra, em vez de
+mais uma Tool dentro do loop ReAct. Ver "Empréstimos" abaixo para o porquê
+completo.
+
+## Empréstimos — a única ação com efeito real (LangGraph + human-in-the-loop)
+
+Das cinco Tools, `request_loan` é a única que muda estado de verdade — as
+outras quatro são consulta. Por isso ela não vive dentro do laço ReAct do
+`AgentExecutor` como as demais: usa um grafo `LangGraph` dedicado
+(`agent/loan_graph.py`), porque o problema que ela resolve — "talvez seja
+preciso pausar por um tempo indeterminado esperando um humano decidir, e
+retomar exatamente de onde parou, mesmo bem depois da requisição do
+Telegram já ter terminado" — não é algo que um `StructuredTool` comum
+consegue expressar.
+
+```
+request_loan(amount)
+  → LoanService.request_loan → LoanGraph.ainvoke(estado_inicial, thread_id=application_id)
+
+        assess (consulta CustomerService)
+            │
+        route_by_amount
+            ├─ valor ≤ LOAN_HUMAN_APPROVAL_THRESHOLD (padrão R$ 50.000)
+            │     → auto_approve → END                                   [status: approved]
+            │
+            └─ valor > limite
+                  → await_decision → END                                 [status: pending_approval, PAUSA aqui]
+
+  (mais tarde, fora de qualquer request do Telegram)
+  POST /admin/loans/{id}/decide  (auth: X-Service-Api-Key)
+        → LoanService.decide
+              → graph.aupdate_state(thread_id, {human_decision: "approved"|"rejected"})
+              → graph.ainvoke(None, thread_id)   # retoma do checkpoint
+                    → route_by_decision → finalize → END      [status: disbursed | rejected]
+        → notifica o cliente via Telegram (best-effort)
+```
+
+- **Checkpointer**: `MemorySaver` (mesma filosofia "em memória" do resto do
+  projeto — perdido ao reiniciar; trocar por `PostgresSaver`/`SqliteSaver`
+  do próprio LangGraph para produção, sem mudar o grafo).
+- **Por que dois `ainvoke` e não um só bloqueando**: o primeiro roda dentro
+  do request do Telegram e precisa retornar rápido — ele nunca espera um
+  humano. O segundo acontece minutos, horas ou dias depois, disparado pelo
+  endpoint admin, completamente fora do ciclo de vida daquela conversa.
+- **`LoanRepository`** (`repositories/loan_repository.py`) existe *ao lado*
+  do checkpointer do grafo: o checkpointer é indexado por `thread_id` e não
+  foi feito para ser listado ("mostra todos os pedidos pendentes"); o
+  repository é a view limpa e consultável que o endpoint admin usa.
+- **Guardrail mais importante do prompt v4**: `requires_human_approval=True`
+  significa pendente, não "praticamente aprovado" — o agente é instruído a
+  nunca afirmar que um empréstimo foi aprovado/desembolsado a menos que o
+  campo `status` retornado pela tool diga isso explicitamente.
+- **Notificação ao cliente é best-effort**: se o envio pelo Telegram falhar
+  depois da decisão humana, a decisão já está persistida — o cliente só não
+  recebe o aviso imediato, não fica com um estado inconsistente.
+
+### Testando o fluxo (com os usuários já seedados)
+
+| `user_id` | Valor de teste | Caminho esperado |
+|---|---|---|
+| `123` (Ana Souza) | `R$ 10.000` | Aprovação automática — `status: approved` |
+| `456` (Bruno Lima) | `R$ 15.000` | Aprovação automática — `status: approved` |
+| `123` ou `456` | `R$ 80.000` | Pendente — `status: pending_approval`, aparece em `GET /admin/loans` |
+
+Para decidir um pedido pendente (troque `<id>` pelo `application_id`
+retornado pela conversa ou por `GET /admin/loans`):
+
+```bash
+curl -X POST "http://localhost:8000/admin/loans/<id>/decide" \
+  -H "X-Service-Api-Key: <SERVICE_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true, "decided_by": "ana.analista"}'
+```
+
+## Memória: curto prazo, resumo e longo prazo
+
+Três mecanismos distintos, com ciclos de vida diferentes (ver
+`domain/models/conversation.py` para o porquê de estarem em campos
+separados em vez de uma lista única):
+
+1. **Janela crua** (`ConversationHistory.messages`) — as últimas mensagens
+   da conversa atual, carregadas via `ConversationRepository`.
+2. **Resumo em rolagem** (`ConversationHistory.summary`) — quando a janela
+   crua ultrapassa 20 mensagens, `ConversationService._maybe_compact` funde
+   as 10 mais antigas num resumo (`agent/conversation_summarizer.py`,
+   modelo utility do router) e as remove do armazenamento bruto via
+   `ConversationRepository.compact`. Substitui o corte rígido que existia
+   antes — nada é simplesmente descartado, é comprimido.
+3. **Memória semântica de longo prazo** (`ConversationHistory.long_term_memories`)
+   — cada vez que um resumo é gerado, ele também vira uma entrada num
+   vector store por usuário (`gateways/semantic_memory_gateway.py`,
+   `InMemoryVectorStore` isolado por `user_id` — sem filtro, isolamento
+   estrutural). No início de cada turno, `ConversationService.get_history`
+   busca semanticamente nessas memórias usando a mensagem atual como query,
+   trazendo de volta contexto relevante mesmo que já tenha "rolado" para
+   fora da janela crua e do resumo — memória que atravessa conversas, não
+   só turnos.
+
+Ambas as pontas de memória de longo prazo (`SemanticMemoryService.remember`
+e `.recall`) e a compactação (`ConversationService._maybe_compact`) são
+**best-effort**: uma falha no backend de embeddings ou no modelo de resumo é
+logada e ignorada — nunca impede a entrega da resposta ao cliente, que já
+foi computada nesse ponto do fluxo.
+
+O System Prompt v3 recebe `{conversation_summary}` e `{long_term_memories}`
+como variáveis de template e instrui o agente a tratá-los como contexto
+aproximado, nunca como fato exato — para saldo, produtos ou recomendação
+atuais, o agente sempre confirma via tool, nunca confia só na memória.
+
 ## Segurança
 
 - **Webhook Telegram**: autenticado via header `X-Telegram-Bot-Api-Secret-Token`
@@ -122,7 +276,13 @@ search_knowledge_base(query)
 - **Rate limiting**: por `user_id`, antes de qualquer chamada ao LLM (fixed
   window, em memória ou Redis).
 - **Auth de serviço**: endpoints internos (fora do webhook) exigem
-  `X-Service-Api-Key`.
+  `X-Service-Api-Key` — inclui os endpoints admin de empréstimo
+  (`api/routers/admin_loans.py`), sem exceção.
+- **`request_loan` é a única Tool com efeito real**: todas as outras quatro
+  são somente-leitura. O valor (`amount`) é o único parâmetro que o LLM
+  controla livremente nela — mesma lógica do `query` em
+  `search_knowledge_base`: não carrega identidade, só parametriza o próprio
+  pedido do cliente autenticado.
 
 ## Observabilidade
 
@@ -133,7 +293,15 @@ search_knowledge_base(query)
 - `traced_span` (`observability/tracing.py`) mede e loga a duração de cada
   chamada de Tool; emite spans OpenTelemetry reais se o SDK opcional estiver
   instalado e configurado.
-- Tracing de ponta a ponta do LLM via LangSmith (opcional, `LANGCHAIN_TRACING_V2=true`).
+- **LangSmith** (`LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY`) para
+  tracing ponta a ponta do LLM — escolhido em vez de LangFuse porque já
+  existe um hook nativo (`agent/llm_factory.py::configure_langsmith_tracing`)
+  e por ser o serviço gerenciado da própria LangChain, sem exigir subir
+  infraestrutura nova no `docker-compose.yml`. Basta configurar as duas
+  variáveis; nenhum código muda. O `LoanGraph` não chama LLM nenhum (é uma
+  máquina de estados determinística), então não há nada dele para o
+  LangSmith rastrear além do que os logs estruturados já cobrem — só as
+  chamadas do `AgentExecutor`/`ChatOpenAI` aparecem no trace.
 
 ## Rodando localmente com Docker Compose
 
@@ -144,7 +312,8 @@ search_knowledge_base(query)
    ```
 
    Preencha `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (uma string
-   aleatória sua escolha), `OPENAI_API_KEY` e `SERVICE_API_KEY`.
+   aleatória sua escolha), `OPENAI_API_KEY`, `SERVICE_API_KEY`,
+   `NGROK_AUTHTOKEN` e `NGROK_DOMAIN` (ver "Túnel de desenvolvimento" abaixo).
 
 2. Suba os serviços:
 
@@ -153,10 +322,31 @@ search_knowledge_base(query)
    ```
 
    A API sobe em `http://localhost:8000`; `GET /health` deve responder
-   `{"status": "ok"}`.
+   `{"status": "ok"}`. O serviço `ngrok` do compose já expõe essa porta
+   publicamente — não é preciso rodar um túnel à parte.
 
-3. Exponha a porta 8000 publicamente (Telegram precisa alcançar um HTTPS
-   público) — em desenvolvimento, use um túnel como `ngrok http 8000`.
+### Túnel de desenvolvimento (domínio fixo)
+
+Telegram precisa alcançar a API por HTTPS público, e o webhook precisa
+sobreviver a restarts. Um túnel efêmero (`ngrok http 8000` avulso, ou
+`trycloudflare.com`) sorteia uma **URL nova a cada restart**, o que invalida
+silenciosamente o `setWebhook` anterior — o sintoma é "mando mensagem e nada
+acontece", com `getWebhookInfo` mostrando `last_error_message` e updates
+pendentes. Por isso o `docker-compose.yml` inclui um serviço `ngrok` fixo,
+com **domínio estático reservado**, para que a URL nunca mude entre
+restarts:
+
+1. Crie uma conta gratuita em [ngrok.com](https://ngrok.com) e pegue o
+   authtoken em [dashboard.ngrok.com/get-started/your-authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)
+   → `NGROK_AUTHTOKEN`.
+2. Reserve um domínio estático gratuito em
+   [dashboard.ngrok.com/domains](https://dashboard.ngrok.com/domains) (ex.:
+   `seu-nome.ngrok-free.app`) → `NGROK_DOMAIN`.
+3. `docker compose up` já sobe o túnel; confira a URL pública ativa (deve
+   bater com `NGROK_DOMAIN`) no painel local em `http://localhost:4040`.
+
+Com domínio fixo, o `setWebhook` do próximo passo só precisa ser feito
+**uma vez** — reiniciar `docker compose` não quebra mais o webhook.
 
 ### Configurar o bot do Telegram
 
@@ -164,15 +354,21 @@ search_knowledge_base(query)
    (`TELEGRAM_BOT_TOKEN`).
 2. Escolha um segredo aleatório para `TELEGRAM_WEBHOOK_SECRET` (ex.:
    `openssl rand -hex 32`).
-3. Registre o webhook, apontando para a URL pública (do túnel/AWS/etc.):
+3. Registre o webhook, apontando para o domínio fixo do túnel:
 
    ```bash
    curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
      -d '{
-           "url": "https://<sua-url-publica>/webhook/telegram",
+           "url": "https://<NGROK_DOMAIN>/webhook/telegram",
            "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
          }'
+   ```
+
+   Para depurar (ver a URL atual, erros de entrega, updates pendentes):
+
+   ```bash
+   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
    ```
 
 4. Converse com o bot no Telegram. Os usuários de exemplo seedados
@@ -198,6 +394,80 @@ poetry run ruff format .       # formatação
 poetry run mypy src            # type-check estrito
 poetry run pre-commit run --all-files
 ```
+
+## Golden Transcripts — regressão de comportamento do agente
+
+`pytest` sozinho não pega tudo: os testes acima nunca chamam um LLM de
+verdade (fakes, `DeterministicFakeEmbedding`, `run_agent_turn` mockado nos
+testes de API) — de propósito, pra suíte continuar rápida, determinística e
+gratuita de rodar a cada commit. Isso deixa uma lacuna real: nada garante
+que uma mudança de prompt, de descrição de Tool, ou de modelo, não quebrou o
+*comportamento* do agente — só que o código continua funcionando.
+**Golden Transcripts** cobrem essa lacuna: cenários de conversa com
+asserções sobre comportamento (quais tools devem ou não ser chamadas, o que
+a resposta final deve/não deve conter), pensados pra rodar contra o agente
+de verdade.
+
+```
+tests/golden/
+├── schema.py                     # GoldenTranscript, ExpectedToolCall, ResponseAssertions, rubric (pydantic)
+├── judge.py                      # LLM-as-a-judge: avalia o campo rubric de cada cenário
+├── transcripts.yaml              # os cenários — 12 exemplos cobrindo as 5 tools + guardrails + segurança
+├── test_golden_transcripts_schema.py   # valida o YAML (sem LLM, roda no pytest normal)
+└── run_golden_transcripts.py     # executa de verdade contra o agente (precisa de OPENAI_API_KEY, manual)
+```
+
+- **`response_assertions` é por substring, nunca por texto exato** — a
+  mesma pergunta produz frases diferentes em execuções diferentes, mesmo em
+  temperatura baixa. O que precisa ser constante é o *conteúdo*, não a
+  redação: por exemplo, `loan_large_amount_requires_human_approval` (o
+  cenário mais importante do arquivo) verifica que a resposta nunca contém
+  "aprovado"/"desembolsado" quando o empréstimo está pendente de revisão
+  humana — é uma regressão de compliance se isso falhar, não só de
+  qualidade de texto.
+- **`test_golden_transcripts_schema.py` roda no CI normal** (sem rede) e
+  pega erros de autoria — nome de tool que não existe mais, id duplicado,
+  categoria sem exemplo — antes mesmo de gastar uma chamada de API.
+- **Rodar de verdade contra o agente é manual**, por design — custa dinheiro
+  e não é determinístico:
+
+  ```bash
+  OPENAI_API_KEY=sk-... poetry run python tests/golden/run_golden_transcripts.py
+  OPENAI_API_KEY=sk-... poetry run python tests/golden/run_golden_transcripts.py --id loan_large_amount_requires_human_approval
+  ```
+
+- **Adicionar um cenário novo**: um item em `transcripts.yaml`, sem tocar
+  em código Python — o schema valida automaticamente. Rode `pytest
+  tests/golden/` depois pra confirmar que o YAML está bem formado.
+
+### LLM-as-a-judge — a terceira camada de asserção
+
+`expected_tool_calls` e `response_assertions` são rápidos, determinísticos e
+gratuitos — mas estruturalmente cegos pra qualidade qualitativa: tom
+adequado, se uma explicação faz sentido, se a resposta é *fiel* ao que uma
+tool retornou (não só cita a palavra certa). Pra isso existe o campo
+opcional `rubric` em `GoldenTranscript`, avaliado por `judge.py`
+(`GoldenTranscriptJudge`) — uma segunda chamada de LLM, separada da
+conversa em si, que julga a resposta contra **um** critério em texto livre
+e devolve `{passed: bool, reasoning: str}` estruturado.
+
+- **Aditivo, não substituto**: as checagens determinísticas continuam
+  sendo a primeira linha de defesa, sempre. O judge só entra quando
+  `rubric` está definido, como uma segunda opinião pro que substring
+  matching não alcança — ex.: em `guardrail_out_of_scope_legal_advice`
+  (onde antes a nota dizia "melhor avaliado por leitura humana") e em
+  `loan_large_amount_requires_human_approval`, pra pegar o caso em que a
+  resposta contorna as palavras proibidas mas ainda assim *implica*
+  aprovação.
+- **Tier reasoning do Model Router** (`ModelActivity.JUDGE`) — julgar tom e
+  fidelidade é julgamento de verdade, não tarefa mecânica; mesmo raciocínio
+  de custo/qualidade que rege o resto do roteamento.
+- **Escolha deliberada de escopo**: implementei como extensão do
+  `run_golden_transcripts.py` existente, não como integração com LangSmith
+  Datasets/evaluators — não exige conta/configuração externa pra ser útil
+  agora. Migrar os cenários pra um Dataset do LangSmith e rodar via
+  `evaluate()` continua um caminho natural depois, se quiser dashboard e
+  histórico de tendência em vez do relatório no terminal.
 
 ## Substituindo o modelo mockado por um modelo real
 

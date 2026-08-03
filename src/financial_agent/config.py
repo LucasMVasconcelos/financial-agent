@@ -33,9 +33,16 @@ class Settings(BaseSettings):
 
     # LLM provider
     openai_api_key: str = "change-me"
-    openai_model: str = "gpt-4o-mini"
     openai_temperature: float = 0.2
     openai_embedding_model: str = "text-embedding-3-small"
+
+    # Model Router: which concrete model backs each tier. The reasoning tier
+    # handles the tool-calling agent (needs strong instruction-following and
+    # judgment); the utility tier handles cheap/mechanical activities (filler
+    # replies, conversation summarization) where a smaller model is enough
+    # and latency/cost matter more. See `agent/model_router.py`.
+    openai_reasoning_model: str = "gpt-4o"
+    openai_utility_model: str = "gpt-4o-mini"
 
     # LangSmith
     langchain_tracing_v2: bool = False
@@ -54,6 +61,18 @@ class Settings(BaseSettings):
     nba_model_provider: Literal["mock", "sagemaker"] = "mock"
     aws_region: str = "us-east-1"
     sagemaker_endpoint_name: str = ""
+
+    # Loan origination (agent/loan_graph.py)
+    # Applications above this amount (BRL) pause for human approval instead
+    # of auto-approving.
+    loan_human_approval_threshold: float = 50_000.0
+
+    # Filler reply (api/routers/telegram_webhook.py). The filler message is
+    # only sent if the main agent hasn't replied within this many seconds —
+    # sending it unconditionally means a fast answer arrives right behind a
+    # "hold on" message the customer never needed, which reads as spam
+    # rather than as the latency-hiding UX it's meant to be.
+    filler_delay_seconds: float = 2.5
 
 
 @lru_cache
