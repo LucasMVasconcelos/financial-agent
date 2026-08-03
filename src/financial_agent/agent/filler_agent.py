@@ -1,6 +1,6 @@
 """Filler agent: keeps the conversation warm while the main agent works.
 
-The main agent (`agent/agent_executor.py`) may take a few seconds per turn —
+The main agent (`agent/main_graph.py`) may take a few seconds per turn —
 it calls `get_customer_profile` and `get_next_best_action`, each a real
 (simulated) network round-trip, before the LLM can compose a final answer.
 Per the product requirement ("enquanto o processo aguarda a resposta do

@@ -14,8 +14,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # redis-stack-server (not plain redis:7-alpine): the LangGraph checkpointer
+  # (langgraph-checkpoint-redis) indexes checkpoints via RediSearch (the
+  # FT.* commands) — plain Redis doesn't have that module, checkpoint
+  # save/load fails immediately without it. See "Persistência de estado no
+  # Redis" in the README for why this branch needs it and master doesn't.
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     container_name: financial-agent-redis
     ports:
       - "6379:6379"

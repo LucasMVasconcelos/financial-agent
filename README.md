@@ -6,10 +6,17 @@ melhor ação financeira (**Next Best Action — NBA**), construído com **FastA
 
 ## Arquitetura
 
+> **Nota sobre esta branch (`feature/langgraph`)**: o diagrama e a tabela
+> abaixo já refletem o estado desta branch, onde o agente principal também é
+> um grafo LangGraph (`agent/main_graph.py`), não mais um `AgentExecutor`.
+> Ver "Grafo principal (`feature/langgraph`)" logo abaixo para o porquê e
+> para o que muda em relação à `master`.
+
 ```
 Telegram → FastAPI webhook → validação (secret token + rate limit)
          → classificação de complexidade → Model Router (tier reasoning | utility)
-         → AgentExecutor (LangChain, tool-calling / ReAct)
+         → MainGraph (LangGraph, FSM cíclica com loop ReAct — agent/main_graph.py)
+              reason ⇄ validate_tool_calls → execute_tool ⇄ self_correct
               ├─ get_customer_profile   → CustomerService      → CustomerRepository
               ├─ get_next_best_action   → NBAService           → NBAModelGateway (mock | SageMaker)
               ├─ get_products           → ProductsService      → CustomerRepository
@@ -19,6 +26,9 @@ Telegram → FastAPI webhook → validação (secret token + rate limit)
                                                                       └─ valor > limite → pausa (PENDING_APPROVAL)
                                                                             → admin aprova/rejeita → retoma → notifica cliente
          → resposta em linguagem natural → Telegram
+
+  MainGraph e LoanGraph compartilham o mesmo checkpointer de processo
+  (MemorySaver local | RedisSaver com USE_REDIS=true — ver seção dedicada).
 ```
 
 Camadas (`src/financial_agent/`):
@@ -29,7 +39,7 @@ Camadas (`src/financial_agent/`):
 | Repository | `repositories/` | Abstrai onde os dados vivem (hoje: fakes em memória). |
 | Gateway | `gateways/` | Integrações externas (Telegram Bot API, modelo NBA, vector store/RAG). |
 | Service | `services/` | Orquestração de casos de uso; traduz falhas em `ToolError`. |
-| Agent | `agent/` | Prompt, Tools, Output Parser, AgentExecutor (LangChain) e o fluxo de empréstimo (LangGraph). |
+| Agent | `agent/` | Prompt, Tools, Output Parser, o grafo principal (`main_graph.py`, LangGraph) e o fluxo de empréstimo (`loan_graph.py`, LangGraph). |
 | Security | `security/` | Validação do webhook Telegram, auth de serviço, rate limit. |
 | Observability | `observability/` | Logs estruturados (structlog), correlation id, tracing. |
 | API | `api/` | FastAPI: routers, middleware, injeção de dependências. |
@@ -57,17 +67,123 @@ o modelo NBA mockado → SageMaker) sem tocar nas demais.
   Telegram (`message.from.id`), nunca do texto da conversa nem de um
   parâmetro que o LLM possa preencher.
 
+## Grafo principal (`feature/langgraph`) — todo o projeto em LangGraph
+
+Na `master`, só o fluxo de empréstimo era um grafo — o agente conversacional
+principal era um `AgentExecutor` do LangChain (loop ReAct opaco: decide, age,
+observa, repete, sem estados nem transições visíveis de fora). Esta branch
+substitui isso por `agent/main_graph.py`: um `StateGraph` explícito, cíclico,
+com cada etapa do loop ReAct como um nó individual, checkpointado e
+retomável — atendendo ao pedido de migrar o projeto inteiro para LangGraph,
+com FSM, validação determinística entre etapas, retentativa e checkpoint em
+Redis.
+
+```
+        START
+          │
+          ▼
+    ┌─────────┐   sem tool_calls, ou            ┌──────────┐
+ ┌─▶│  reason │──────cap de iterações──────────▶│ finalize │──▶ END
+ │  └────┬────┘                                  └──────────┘
+ │       │ tool_calls
+ │       ▼
+ │  ┌──────────────────┐   inválida     ┌───────────────┐
+ │  │ validate_tool_    │───────────────▶│ self_correct  │
+ │  │ calls             │                └───────┬───────┘
+ │  └────────┬──────────┘                        │
+ │           │ válida                             │
+ │           ▼                                    │
+ │     ┌─────────────┐   tool falhou (ToolEnvelope│
+ │     │ execute_tool│───success=false)───────────┘
+ │     └──────┬──────┘
+ │            │ sucesso
+ └────────────┘
+```
+
+- **`reason`** — o passo ReAct de fato: o LLM (já com `bind_tools`) vê a
+  lista corrente de mensagens (prompt de sistema, histórico, resultados de
+  tools anteriores) e ou chama uma tool ou produz a resposta final. É
+  visitado a cada iteração do loop — é isso que faz o grafo ser cíclico, e
+  não um pipeline fixo de passo único.
+- **`validate_tool_calls`** — validação determinística *entre* etapas,
+  antes de qualquer tool rodar: nome de tool desconhecido, um campo de
+  identidade (`user_id`) injetado nos argumentos (defesa em profundidade —
+  os Input Schemas já excluem esse campo; isso é uma segunda barreira caso
+  um schema futuro regrida), ou um valor de empréstimo fora do intervalo
+  permitido. Uma rejeição aqui nunca chega a tocar um service — vai direto
+  para `self_correct` com um `ToolEnvelope` de erro sintético, no mesmo
+  formato exato de uma falha real de tool, para o LLM não conseguir
+  distinguir as duas.
+- **`execute_tool`** — roda a(s) tool call(s) já validada(s). Nenhuma
+  exceção escapa daqui (contrato de `run_tool`, ver "Tools — contrato"
+  abaixo); todo resultado é uma string JSON `ToolEnvelope`.
+- **`self_correct`** — **Tool Self-Correction**: ao ver um erro estruturado
+  (validação ou `ToolEnvelope.success=False`), injeta uma instrução
+  corretiva na conversa e volta para `reason` em vez de travar o turno ou
+  desistir. Limitado por `_MAX_TOOL_RETRIES` (2) — depois disso,
+  `route_after_execute` para de mandar de volta para `self_correct`, o LLM
+  vê a falha mais uma vez e decide como encerrar (normalmente admitindo que
+  não conseguiu completar a ação).
+- **`finalize`** — extrai o texto final quando `reason` produz uma resposta
+  sem tool calls, ou quando o cap de iterações (`_MAX_ITERATIONS = 6`, igual
+  ao `max_iterations` do `AgentExecutor` na master) é atingido.
+
+### Human-in-the-loop: por que continua no `LoanGraph`, não no grafo principal
+
+O pedido original passa a leitura de "esta branch usa LangGraph em tudo,
+com capacidade de pausar para validação humana" como se fosse uma única
+propriedade de um único grafo. Na prática isso vira **dois grafos LangGraph
+coordenados**, cada um resolvendo o tipo de pausa que faz sentido para si:
+
+- `main_graph.py` **nunca** pausa um turno de conversa esperando um humano.
+  Pausar um turno inteiro por horas seria péssima UX (o cliente ficaria
+  vendo "digitando..." indefinidamente) e desnecessário — o checkpoint desse
+  grafo só precisa sobreviver a um round-trip do Telegram, não a uma espera
+  indeterminada.
+- `agent/loan_graph.py` é o lugar certo para essa pausa: `request_loan`
+  continua sendo uma Tool comum que retorna na hora (com status
+  `pending_approval` quando for o caso), e é o `LoanGraph`, por trás dela,
+  que efetivamente pausa em `await_decision` e retoma depois via
+  `POST /admin/loans/{id}/decide` — ver "Empréstimos" abaixo.
+
+Os dois grafos agora compartilham o **mesmo checkpointer de processo**
+(injetado em `api/app_state.py`, ver próxima seção) — thread_ids nunca
+colidem entre eles (`telegram:{update_id}` vs. `application_id`), então
+compartilhar a mesma instância é seguro e evita segurar duas conexões Redis
+redundantes.
+
+### Persistência de estado no Redis
+
+`Settings.use_redis` (env `USE_REDIS`, mesma flag que já seleciona o backend
+do rate limiter) decide o checkpointer:
+
+- `USE_REDIS=false` (padrão, e o que a suíte de testes usa) — `MemorySaver`,
+  em processo, perdido ao reiniciar. Suficiente para dev local sem Docker.
+- `USE_REDIS=true` — `AsyncRedisSaver` (`langgraph-checkpoint-redis`),
+  conectado em `REDIS_URL`, com `asetup()` chamado uma vez no startup
+  (`api/app_state.py::_build_checkpointer`). **Requer Redis Stack**
+  (`redis/redis-stack-server`, não `redis:7-alpine`) — o checkpointer indexa
+  os checkpoints via RediSearch (comandos `FT.*`), que o Redis "puro" não
+  tem; `docker-compose.yml` já usa a imagem certa nesta branch. Isso foi
+  confirmado tentando `AsyncRedisSaver` contra um Redis comum: falha
+  imediatamente com `unknown command 'FT._LIST'`.
+
+Com o checkpoint em Redis, um restart do processo no meio de um turno (entre
+`execute_tool` e `reason`, por exemplo) retoma do último nó concluído em vez
+de perder o turno — o mesmo raciocínio de recuperação a frio que já valia
+para o `LoanGraph` na master, agora estendido ao grafo principal.
+
 ## LangChain — componentes utilizados
 
 | Componente | Onde | Papel |
 |---|---|---|
 | Chat Model | `agent/llm_factory.py` + `agent/model_router.py` | `ChatOpenAI`, construído em duas variantes (reasoning/utility) por processo — ver "Model Router" abaixo. |
-| System Prompt / Human Prompt | `agent/prompts/system_prompt_v4.py` (registrado em `prompt_registry.py`), `agent/agent_executor.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana. |
-| Output Parser | `agent/output_parser.py` | `PydanticOutputParser` estrutura a resposta do "filler agent"; o agente principal usa o parser interno do `create_openai_tools_agent`. |
+| System Prompt / Human Prompt | `agent/prompts/system_prompt_v4.py` (registrado em `prompt_registry.py`), `agent/main_graph.py` | Persona, guardrails e compliance versionados como código; `ChatPromptTemplate` compõe system + histórico + mensagem humana (usado só para *formatar* as mensagens iniciais do grafo, não para rodar um loop). |
+| Output Parser | `agent/output_parser.py` | `PydanticOutputParser` estrutura a resposta do "filler agent"; o grafo principal lê `AIMessage.tool_calls` nativamente (`llm.bind_tools`), sem parser separado. |
 | Tool Calling | `agent/tools/*.py` | Cinco `StructuredTool`s com schema estreito e identidade vinculada por closure — quatro somente-leitura, uma (`request_loan`) com efeito real. |
-| Runnable | em toda parte | Prompt, LLM, parser e Tools são todos `Runnable`s componíveis com `|`. |
-| Agent Executor | `agent/agent_executor.py` | Laço ReAct que decide "chamar uma Tool" vs. "responder", com `handle_parsing_errors=True`. Cobre as quatro Tools de leitura + o disparo do `request_loan`. |
-| LangGraph (`StateGraph` + checkpointer) | `agent/loan_graph.py` | Fluxo à parte, estilo Plan-and-Execute, só para originação de empréstimo — ver seção "Empréstimos" abaixo para o porquê de não usar o `AgentExecutor` aqui. |
+| Runnable | em toda parte | Prompt, LLM, parser, Tools e os próprios grafos compilados são todos `Runnable`s componíveis com `|`. |
+| LangGraph (`StateGraph` + checkpointer) | `agent/main_graph.py` | Grafo principal: FSM cíclica (`reason ⇄ validate_tool_calls ⇄ execute_tool ⇄ self_correct`) que substitui o `AgentExecutor` — ver "Grafo principal" acima. |
+| LangGraph (`StateGraph` + checkpointer) | `agent/loan_graph.py` | Segundo grafo, à parte, estilo Plan-and-Execute, só para originação de empréstimo — ver seção "Empréstimos" abaixo para o porquê de ser um grafo separado do principal. |
 
 ## Tools — contrato
 
@@ -146,31 +262,35 @@ justificativa, menção a empréstimo, múltiplas perguntas no mesmo texto) —
 gastar uma chamada de modelo só para decidir qual modelo usar anularia o
 ganho que o roteamento existe para dar. `SIMPLE` usa o tier utility,
 `COMPLEX` usa o tier reasoning — é essa escolha, não `AGENT_REASONING` fixo,
-que decide o modelo do `AgentExecutor` a cada turno (`telegram_webhook.py`).
+que decide o modelo do grafo principal a cada turno (`telegram_webhook.py`).
 
 ### ReAct no modelo pequeno, Plan-and-Execute (LangGraph) no fluxo complexo
 
 A combinação intuitiva ("modelo grande = técnica mais sofisticada") não é o
-que está implementado, de propósito. Perguntas simples e complexas usam o
-**mesmo** `AgentExecutor`/ReAct — só troca o tamanho do modelo por baixo,
-porque decidir "chamar 1 tool ou responder" não muda de forma com o tamanho
-da pergunta. Onde a técnica realmente muda é no pedido de empréstimo: por
-ser a única ação com efeito real, sempre tratada com o tier reasoning, e por
-precisar de um plano revisável com um ponto de pausa para aprovação humana —
-é aí que o `LoanGraph` (LangGraph, estilo Plan-and-Execute) entra, em vez de
-mais uma Tool dentro do loop ReAct. Ver "Empréstimos" abaixo para o porquê
+que está implementado, de propósito. Perguntas simples e complexas passam
+pelo **mesmo** grafo/loop ReAct (`reason ⇄ validate_tool_calls ⇄
+execute_tool`, ver "Grafo principal" acima) — só troca o tamanho do modelo
+por baixo, porque decidir "chamar 1 tool ou responder" não muda de forma com
+o tamanho da pergunta. Onde a técnica realmente muda é no pedido de
+empréstimo: por ser a única ação com efeito real, sempre tratada com o tier
+reasoning, e por precisar de um plano revisável com um ponto de pausa para
+aprovação humana — é aí que o `LoanGraph` (LangGraph, estilo
+Plan-and-Execute, grafo separado do principal) entra, em vez de mais uma
+Tool comum dentro do loop ReAct. Ver "Empréstimos" abaixo para o porquê
 completo.
 
 ## Empréstimos — a única ação com efeito real (LangGraph + human-in-the-loop)
 
 Das cinco Tools, `request_loan` é a única que muda estado de verdade — as
-outras quatro são consulta. Por isso ela não vive dentro do laço ReAct do
-`AgentExecutor` como as demais: usa um grafo `LangGraph` dedicado
-(`agent/loan_graph.py`), porque o problema que ela resolve — "talvez seja
-preciso pausar por um tempo indeterminado esperando um humano decidir, e
-retomar exatamente de onde parou, mesmo bem depois da requisição do
-Telegram já ter terminado" — não é algo que um `StructuredTool` comum
-consegue expressar.
+outras quatro são consulta. Por isso ela não é apenas "mais uma tool" que o
+`execute_tool` do grafo principal chama e pronto: por trás dela existe um
+segundo grafo `LangGraph` dedicado (`agent/loan_graph.py`), porque o
+problema que ela resolve — "talvez seja preciso pausar por um tempo
+indeterminado esperando um humano decidir, e retomar exatamente de onde
+parou, mesmo bem depois da requisição do Telegram já ter terminado" — não é
+algo que uma tool comum, executada dentro de um turno de conversa, consegue
+expressar (ver "Human-in-the-loop" acima para o porquê de ser um segundo
+grafo em vez do mesmo grafo principal).
 
 ```
 request_loan(amount)
@@ -194,9 +314,10 @@ request_loan(amount)
         → notifica o cliente via Telegram (best-effort)
 ```
 
-- **Checkpointer**: `MemorySaver` (mesma filosofia "em memória" do resto do
-  projeto — perdido ao reiniciar; trocar por `PostgresSaver`/`SqliteSaver`
-  do próprio LangGraph para produção, sem mudar o grafo).
+- **Checkpointer**: o mesmo checkpointer de processo do grafo principal
+  (`MemorySaver` por padrão, `RedisSaver` com `USE_REDIS=true` — ver
+  "Persistência de estado no Redis" acima); antes desta branch cada grafo
+  tinha o seu próprio `MemorySaver` isolado.
 - **Por que dois `ainvoke` e não um só bloqueando**: o primeiro roda dentro
   do request do Telegram e precisa retornar rápido — ele nunca espera um
   humano. O segundo acontece minutos, horas ou dias depois, disparado pelo
@@ -301,7 +422,8 @@ atuais, o agente sempre confirma via tool, nunca confia só na memória.
   variáveis; nenhum código muda. O `LoanGraph` não chama LLM nenhum (é uma
   máquina de estados determinística), então não há nada dele para o
   LangSmith rastrear além do que os logs estruturados já cobrem — só as
-  chamadas do `AgentExecutor`/`ChatOpenAI` aparecem no trace.
+  chamadas do grafo principal (`reason`) contra o `ChatOpenAI` aparecem no
+  trace.
 
 ## Rodando localmente com Docker Compose
 
