@@ -37,84 +37,86 @@ DEFAULT_TOP_K = 3
 _ARTICLES: tuple[dict[str, str], ...] = (
     {
         "source": "cdb_liquidez_diaria",
-        "title": "CDB Liquidez Diária",
+        "title": "Daily-Liquidity CD",
         "content": (
-            "O CDB Liquidez Diária é um Certificado de Depósito Bancário que permite resgate "
-            "a qualquer momento, sem perda de rentabilidade proporcional ao período investido. "
-            "Costuma render um percentual do CDI e é garantido pelo FGC até o limite legal de "
-            "R$ 250.000,00 por CPF e instituição."
+            "A Daily-Liquidity CD (CDB Liquidez Diária) is a bank deposit certificate that "
+            "can be redeemed at any time, with no loss of yield proportional to the period "
+            "invested. It typically pays a percentage of the CDI rate and is guaranteed by "
+            "the FGC (Brazil's deposit insurance fund) up to the legal limit of "
+            "R$ 250,000.00 per taxpayer ID (CPF) and institution."
         ),
     },
     {
         "source": "tesouro_selic",
         "title": "Tesouro Selic",
         "content": (
-            "O Tesouro Selic é um título público pós-fixado que acompanha a taxa Selic. É "
-            "indicado para reserva de emergência por ter baixo risco e boa liquidez, com "
-            "resgate em até um dia útil. Incide Imposto de Renda regressivo sobre o rendimento."
+            "Tesouro Selic is a floating-rate government bond that tracks the Selic policy "
+            "rate. It is recommended for an emergency fund thanks to its low risk and good "
+            "liquidity, with redemption within one business day. Regressive income tax "
+            "applies to the yield."
         ),
     },
     {
         "source": "seguro_vida",
-        "title": "Seguro de Vida",
+        "title": "Life Insurance",
         "content": (
-            "O Seguro de Vida garante uma indenização aos beneficiários indicados em caso de "
-            "morte ou invalidez do segurado. O valor do prêmio mensal depende da idade, do "
-            "capital segurado escolhido e de coberturas adicionais, como doenças graves."
+            "Life Insurance guarantees a payout to the named beneficiaries in the event of "
+            "the insured's death or disability. The monthly premium depends on age, the "
+            "chosen insured amount, and additional coverage, such as critical illness."
         ),
     },
     {
         "source": "seguro_residencial",
-        "title": "Seguro Residencial",
+        "title": "Homeowners Insurance",
         "content": (
-            "O Seguro Residencial cobre danos ao imóvel e a bens dentro dele por incêndio, "
-            "roubo, alagamento e outros eventos previstos em apólice. Pode incluir assistência "
-            "24h para encanador, eletricista e chaveiro."
+            "Homeowners Insurance covers damage to the property and belongings inside it "
+            "from fire, theft, flooding, and other events covered by the policy. It can "
+            "include 24-hour assistance for plumbers, electricians, and locksmiths."
         ),
     },
     {
         "source": "cartao_black_limite",
-        "title": "Aumento de Limite do Cartão Black",
+        "title": "Black Card Limit Increase",
         "content": (
-            "O aumento de limite do Cartão Black é avaliado automaticamente com base no "
-            "histórico de uso, pagamento em dia e relacionamento com o banco. O cliente pode "
-            "também solicitar uma revisão manual de limite pelo aplicativo."
+            "A Black Card limit increase is evaluated automatically based on usage history, "
+            "on-time payments, and the relationship with the bank. The customer can also "
+            "request a manual limit review through the app."
         ),
     },
     {
         "source": "portabilidade_credito",
-        "title": "Portabilidade de Crédito",
+        "title": "Credit Portability",
         "content": (
-            "A portabilidade de crédito permite transferir um empréstimo ou financiamento de "
-            "outra instituição para o banco, geralmente buscando uma taxa de juros menor. Não "
-            "há custo para o cliente solicitar a portabilidade, conforme regulação do Bacen."
+            "Credit portability lets a customer transfer a loan or financing from another "
+            "institution to this bank, usually seeking a lower interest rate. There is no "
+            "cost for the customer to request portability, per the Central Bank of Brazil "
+            "(Bacen)'s regulation."
         ),
     },
     {
         "source": "reserva_emergencia",
-        "title": "Reserva de Emergência",
+        "title": "Emergency Fund",
         "content": (
-            "A reserva de emergência é uma quantia guardada em aplicações de alta liquidez, "
-            "como Tesouro Selic ou CDB de liquidez diária, recomendada para cobrir de 3 a 6 "
-            "meses de despesas essenciais em caso de imprevistos."
+            "An emergency fund is an amount set aside in highly liquid investments, such as "
+            "Tesouro Selic or a daily-liquidity CD, recommended to cover 3 to 6 months of "
+            "essential expenses in case of the unexpected."
         ),
     },
     {
         "source": "antecipacao_parcelas",
-        "title": "Antecipação de Parcelas",
+        "title": "Early Installment Payoff",
         "content": (
-            "A antecipação de parcelas permite quitar parte ou o total de um empréstimo antes "
-            "do prazo, com desconto proporcional de juros futuros conforme legislação vigente. "
-            "Pode ser feita diretamente pelo aplicativo, sem necessidade de atendimento humano."
+            "Early installment payoff lets a customer settle part or all of a loan ahead of "
+            "schedule, with a proportional discount on future interest as required by "
+            "current law. It can be done directly through the app, with no need for human "
+            "assistance."
         ),
     },
 )
 
 
 class KnowledgeBaseGateway(Protocol):
-    async def search(
-        self, query: str, *, top_k: int = DEFAULT_TOP_K
-    ) -> list[KnowledgeSnippet]:
+    async def search(self, query: str, *, top_k: int = DEFAULT_TOP_K) -> list[KnowledgeSnippet]:
         """Return the `top_k` most relevant snippets for `query`.
 
         Raises:
@@ -143,9 +145,7 @@ class InMemoryKnowledgeBaseGateway:
         vector_store = await InMemoryVectorStore.afrom_documents(documents, embeddings)
         return cls(vector_store)
 
-    async def search(
-        self, query: str, *, top_k: int = DEFAULT_TOP_K
-    ) -> list[KnowledgeSnippet]:
+    async def search(self, query: str, *, top_k: int = DEFAULT_TOP_K) -> list[KnowledgeSnippet]:
         try:
             results = await self._vector_store.asimilarity_search_with_score(query, k=top_k)
         except Exception as exc:

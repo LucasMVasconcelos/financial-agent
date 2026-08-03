@@ -22,19 +22,19 @@ _SUMMARIZER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Você resume conversas entre um cliente e um assistente financeiro. "
-            "Produza um resumo curto (no máximo 5 frases) em português, preservando "
-            "fatos relevantes sobre o cliente e o que já foi discutido ou recomendado "
-            "— produtos mencionados, recomendações dadas, dúvidas já respondidas. "
-            "Não invente nada que não esteja no texto abaixo. Responda apenas com o "
-            "resumo, sem introduções.",
+            "You summarize conversations between a customer and a financial "
+            "assistant. Produce a short summary (5 sentences maximum) in English, "
+            "preserving relevant facts about the customer and what has already been "
+            "discussed or recommended — products mentioned, recommendations given, "
+            "questions already answered. Don't make up anything that isn't in the "
+            "text below. Reply with only the summary, no introductions.",
         ),
         (
             "human",
-            "Resumo existente (pode estar vazio):\n{existing_summary}\n\n"
-            "Novas mensagens a incorporar:\n{new_turns}\n\n"
-            "Escreva o resumo atualizado, combinando o que já existia com as novas "
-            "mensagens.",
+            "Existing summary (may be empty):\n{existing_summary}\n\n"
+            "New messages to incorporate:\n{new_turns}\n\n"
+            "Write the updated summary, combining what already existed with the new "
+            "messages.",
         ),
     ]
 )
@@ -50,7 +50,7 @@ class ConversationSummarizer:
         transcript = "\n".join(f"{m.role.value}: {m.content}" for m in new_turns)
         result: str = await self._chain.ainvoke(
             {
-                "existing_summary": existing_summary or "(nenhum ainda)",
+                "existing_summary": existing_summary or "(none yet)",
                 "new_turns": transcript,
             }
         )

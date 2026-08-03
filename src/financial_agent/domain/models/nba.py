@@ -15,13 +15,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class NextBestActionType(StrEnum):
-    INVEST_FIXED_INCOME = "investir_em_renda_fixa"
-    INCREASE_CREDIT_LIMIT = "aumentar_limite_do_cartao"
-    HIRE_INSURANCE = "contratar_seguro"
-    ANTICIPATE_INSTALLMENTS = "antecipar_parcelas"
-    PORT_DEBT = "fazer_portabilidade"
-    INVEST_CDB = "aplicar_em_cdb"
-    BUILD_EMERGENCY_FUND = "criar_reserva_de_emergencia"
+    INVEST_FIXED_INCOME = "invest_in_fixed_income"
+    INCREASE_CREDIT_LIMIT = "increase_card_limit"
+    HIRE_INSURANCE = "hire_insurance"
+    ANTICIPATE_INSTALLMENTS = "anticipate_installments"
+    PORT_DEBT = "port_debt"
+    INVEST_CDB = "invest_in_cdb"
+    BUILD_EMERGENCY_FUND = "build_emergency_fund"
 
 
 class NextBestActionCandidate(BaseModel):

@@ -24,37 +24,37 @@ class TestInMemorySemanticMemoryGateway:
     async def test_recall_before_any_remember_returns_empty(self) -> None:
         gateway = _build_gateway()
 
-        results = await gateway.recall(USER_A, "qualquer coisa")
+        results = await gateway.recall(USER_A, "anything")
 
         assert results == []
 
     async def test_remember_then_recall_returns_the_stored_text(self) -> None:
         gateway = _build_gateway()
 
-        await gateway.remember(USER_A, "Cliente perguntou sobre portabilidade de crédito.")
+        await gateway.remember(USER_A, "Customer asked about credit portability.")
 
-        results = await gateway.recall(USER_A, "portabilidade de crédito", top_k=3)
+        results = await gateway.recall(USER_A, "credit portability", top_k=3)
 
-        assert results == ["Cliente perguntou sobre portabilidade de crédito."]
+        assert results == ["Customer asked about credit portability."]
 
     async def test_memories_are_isolated_per_user(self) -> None:
         gateway = _build_gateway()
 
-        await gateway.remember(USER_A, "Fato sobre o usuário A.")
-        await gateway.remember(USER_B, "Fato sobre o usuário B.")
+        await gateway.remember(USER_A, "Fact about user A.")
+        await gateway.remember(USER_B, "Fact about user B.")
 
-        results_a = await gateway.recall(USER_A, "fato", top_k=5)
-        results_b = await gateway.recall(USER_B, "fato", top_k=5)
+        results_a = await gateway.recall(USER_A, "fact", top_k=5)
+        results_b = await gateway.recall(USER_B, "fact", top_k=5)
 
-        assert results_a == ["Fato sobre o usuário A."]
-        assert results_b == ["Fato sobre o usuário B."]
+        assert results_a == ["Fact about user A."]
+        assert results_b == ["Fact about user B."]
 
     async def test_top_k_is_respected(self) -> None:
         gateway = _build_gateway()
 
         for i in range(5):
-            await gateway.remember(USER_A, f"Memória número {i}.")
+            await gateway.remember(USER_A, f"Memory number {i}.")
 
-        results = await gateway.recall(USER_A, "memória", top_k=2)
+        results = await gateway.recall(USER_A, "memory", top_k=2)
 
         assert len(results) == 2

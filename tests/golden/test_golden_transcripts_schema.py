@@ -60,9 +60,9 @@ class TestGoldenTranscriptsSchema:
         suite = _load()
         for transcript in suite.transcripts:
             for expected_call in transcript.expected_tool_calls:
-                assert expected_call.tool_name in _KNOWN_TOOL_NAMES, (
-                    f"{transcript.id}: unknown tool '{expected_call.tool_name}'"
-                )
+                assert (
+                    expected_call.tool_name in _KNOWN_TOOL_NAMES
+                ), f"{transcript.id}: unknown tool '{expected_call.tool_name}'"
 
     def test_every_category_is_represented(self) -> None:
         """A light coverage guard: every category the schema defines should have
@@ -94,9 +94,9 @@ class TestJudgeVerdictSchema:
     """`JudgeVerdict` itself needs no LLM to validate — it's a plain pydantic model."""
 
     def test_accepts_a_passing_verdict(self) -> None:
-        verdict = JudgeVerdict(passed=True, reasoning="Atende ao critério.")
+        verdict = JudgeVerdict(passed=True, reasoning="Meets the criterion.")
         assert verdict.passed is True
 
     def test_accepts_a_failing_verdict(self) -> None:
-        verdict = JudgeVerdict(passed=False, reasoning="Não atende ao critério porque X.")
+        verdict = JudgeVerdict(passed=False, reasoning="Does not meet the criterion because X.")
         assert verdict.passed is False

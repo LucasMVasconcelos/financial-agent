@@ -40,7 +40,7 @@ class CustomerProfile(BaseModel):
 
     user_id: int
     full_name: str
-    segment: str = Field(description="CRM segment, e.g. 'private', 'varejo', 'high_income'.")
+    segment: str = Field(description="CRM segment, e.g. 'private', 'retail', 'high_income'.")
     risk_profile: RiskProfile
     account_balance: float = Field(ge=0, description="Current checking-account balance in BRL.")
     products: list[Product] = Field(default_factory=list)

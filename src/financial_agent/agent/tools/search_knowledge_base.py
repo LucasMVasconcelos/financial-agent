@@ -29,7 +29,7 @@ class SearchKnowledgeBaseInput(BaseModel):
         max_length=300,
         description=(
             "The customer's question or topic, in natural language, e.g. "
-            "'como funciona a portabilidade de crédito'. Do not include the "
+            "'how does credit portability work'. Do not include the "
             "customer's name or any identity information."
         ),
     )
@@ -72,8 +72,8 @@ def build_search_knowledge_base_tool(
         description=(
             "Searches the bank's knowledge base (product rules, policies, how-to articles) "
             "and returns the most relevant passages. Use this to answer 'how does X work' "
-            "or 'what is X' questions — e.g. about CDB, Tesouro Selic, seguros, portabilidade "
-            "de crédito, antecipação de parcelas — instead of answering from memory. Do not "
+            "or 'what is X' questions — e.g. about CDs, Tesouro Selic, insurance, credit "
+            "portability, early installment payoff — instead of answering from memory. Do not "
             "use this for the customer's personalized recommendation; use "
             "get_next_best_action for that."
         ),

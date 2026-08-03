@@ -33,7 +33,7 @@ class TestInMemoryKnowledgeBaseGateway:
     async def test_search_returns_up_to_top_k_snippets(self) -> None:
         gateway = await _build_gateway()
 
-        results = await gateway.search("como funciona a portabilidade de credito", top_k=3)
+        results = await gateway.search("how does credit portability work", top_k=3)
 
         assert 1 <= len(results) <= 3
         for snippet in results:

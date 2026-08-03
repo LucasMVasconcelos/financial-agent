@@ -9,10 +9,10 @@ class TestClassifyQueryComplexity:
     @pytest.mark.parametrize(
         "text",
         [
-            "como funciona o cdb?",
-            "qual meu saldo?",
-            "oi",
-            "quais produtos vocês têm?",
+            "how does a cd work?",
+            "what's my balance?",
+            "hi",
+            "what products do you have?",
         ],
     )
     def test_short_factual_questions_are_simple(self, text: str) -> None:
@@ -22,24 +22,24 @@ class TestClassifyQueryComplexity:
         assert classify_query_complexity("   ") is QueryComplexity.SIMPLE
 
     def test_long_message_is_complex(self) -> None:
-        text = " ".join(["palavra"] * 30)
+        text = " ".join(["word"] * 30)
         assert classify_query_complexity(text) is QueryComplexity.COMPLEX
 
     @pytest.mark.parametrize(
         "text",
         [
-            "quero solicitar um empréstimo de 10000 reais",
-            "por que vocês recomendam isso pra mim?",
-            "compare CDB e Tesouro Selic",
-            "qual a diferença entre os dois produtos?",
+            "I want to request a loan of 10000 reais",
+            "why do you recommend this to me?",
+            "compare CD and Tesouro Selic",
+            "what's the difference between the two products?",
         ],
     )
     def test_signal_words_are_complex(self, text: str) -> None:
         assert classify_query_complexity(text) is QueryComplexity.COMPLEX
 
     def test_multiple_question_marks_is_complex(self) -> None:
-        text = "e sobre seguros? e sobre cartão?"
+        text = "what about insurance? what about the card?"
         assert classify_query_complexity(text) is QueryComplexity.COMPLEX
 
     def test_is_case_insensitive(self) -> None:
-        assert classify_query_complexity("EMPRÉSTIMO") is QueryComplexity.COMPLEX
+        assert classify_query_complexity("LOAN") is QueryComplexity.COMPLEX

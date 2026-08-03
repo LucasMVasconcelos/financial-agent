@@ -85,8 +85,8 @@ def build_loan_graph(
         profile = await customer_service.get_profile(state["user_id"])
         return {
             "reason": (
-                f"Avaliação baseada no perfil do cliente (segmento {profile.segment}, "
-                f"risco {profile.risk_profile.value})."
+                f"Assessment based on the customer's profile (segment {profile.segment}, "
+                f"risk {profile.risk_profile.value})."
             )
         }
 
@@ -97,7 +97,7 @@ def build_loan_graph(
         return {
             "status": "approved",
             "requires_human_approval": False,
-            "reason": state["reason"] + " Valor dentro do limite de aprovação automática.",
+            "reason": state["reason"] + " Amount within the auto-approval limit.",
         }
 
     async def await_decision(state: LoanGraphState) -> dict[str, object]:
@@ -105,8 +105,7 @@ def build_loan_graph(
             "status": "pending_approval",
             "requires_human_approval": True,
             "reason": (
-                state["reason"]
-                + " Valor acima do limite de aprovação automática; aguardando revisão humana."
+                state["reason"] + " Amount above the auto-approval limit; awaiting human review."
             ),
         }
 
@@ -118,9 +117,9 @@ def build_loan_graph(
         return {
             "status": "disbursed" if approved else "rejected",
             "reason": (
-                "Aprovado em revisão humana e desembolsado."
+                "Approved in human review and disbursed."
                 if approved
-                else "Rejeitado em revisão humana."
+                else "Rejected in human review."
             ),
         }
 

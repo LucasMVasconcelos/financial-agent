@@ -3,7 +3,7 @@
 `traced_span` is the primitive every Tool handler wraps itself in (see
 `financial_agent.agent.tools.base.BaseTool.arun`) to record execution time
 and success/failure as a structured log event — this satisfies the
-"tempo de execução das Tools" observability requirement without a hard
+"Tools' execution time" observability requirement without a hard
 dependency on any specific backend.
 
 If the optional `opentelemetry-sdk` / `opentelemetry-instrumentation-fastapi`
