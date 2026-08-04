@@ -30,9 +30,7 @@ class TestAdminLoansAuth:
         assert response.status_code == 401
 
     async def test_invalid_api_key_returns_401(self, client: AsyncClient) -> None:
-        response = await client.get(
-            "/admin/loans", headers={SERVICE_API_KEY_HEADER: "wrong-key"}
-        )
+        response = await client.get("/admin/loans", headers={SERVICE_API_KEY_HEADER: "wrong-key"})
         assert response.status_code == 401
 
 
@@ -44,9 +42,7 @@ class TestAdminLoansList:
             user_id=KNOWN_USER_ID, amount=80_000.0
         )
 
-        response = await client.get(
-            "/admin/loans", headers={SERVICE_API_KEY_HEADER: VALID_KEY}
-        )
+        response = await client.get("/admin/loans", headers={SERVICE_API_KEY_HEADER: VALID_KEY})
 
         assert response.status_code == 200
         body = response.json()
@@ -58,9 +54,7 @@ class TestAdminLoansList:
     ) -> None:
         await app_state.loan_service.request_loan(user_id=KNOWN_USER_ID, amount=1_000.0)
 
-        response = await client.get(
-            "/admin/loans", headers={SERVICE_API_KEY_HEADER: VALID_KEY}
-        )
+        response = await client.get("/admin/loans", headers={SERVICE_API_KEY_HEADER: VALID_KEY})
 
         assert response.json() == []
 
@@ -85,9 +79,7 @@ class TestAdminLoansDecide:
         assert body["decided_by"] == "ana.analista"
         app_state.telegram_gateway.send_message.assert_awaited_once()  # type: ignore[attr-defined]
 
-    async def test_reject_updates_status(
-        self, client: AsyncClient, app_state: AppState
-    ) -> None:
+    async def test_reject_updates_status(self, client: AsyncClient, app_state: AppState) -> None:
         application = await app_state.loan_service.request_loan(
             user_id=KNOWN_USER_ID, amount=80_000.0
         )
@@ -127,9 +119,7 @@ class TestAdminLoansDecide:
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
-    async def test_decide_requires_api_key(
-        self, client: AsyncClient, app_state: AppState
-    ) -> None:
+    async def test_decide_requires_api_key(self, client: AsyncClient, app_state: AppState) -> None:
         application = await app_state.loan_service.request_loan(
             user_id=KNOWN_USER_ID, amount=80_000.0
         )
