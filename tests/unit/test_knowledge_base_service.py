@@ -33,18 +33,18 @@ class TestKnowledgeBaseService:
         gateway = _StubGateway(snippets=[snippet])
         service = KnowledgeBaseService(gateway)
 
-        results = await service.search("como funciona o tesouro selic")
+        results = await service.search("how does tesouro selic work")
 
         assert results == [snippet]
-        assert gateway.last_query == "como funciona o tesouro selic"
+        assert gateway.last_query == "how does tesouro selic work"
 
     async def test_strips_whitespace_before_delegating(self) -> None:
         gateway = _StubGateway()
         service = KnowledgeBaseService(gateway)
 
-        await service.search("  cdb liquidez diaria  ")
+        await service.search("  daily liquidity cd  ")
 
-        assert gateway.last_query == "cdb liquidez diaria"
+        assert gateway.last_query == "daily liquidity cd"
 
     @pytest.mark.parametrize("query", ["", "  ", "ab"])
     async def test_validation_error_for_too_short_query(self, query: str) -> None:
@@ -61,6 +61,6 @@ class TestKnowledgeBaseService:
         service = KnowledgeBaseService(_FailingGateway())
 
         with pytest.raises(DomainToolError) as exc_info:
-            await service.search("portabilidade de credito")
+            await service.search("credit portability")
 
         assert exc_info.value.code == ToolErrorCode.UPSTREAM_ERROR

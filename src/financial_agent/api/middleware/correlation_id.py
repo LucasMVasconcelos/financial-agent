@@ -29,9 +29,7 @@ REQUEST_ID_HEADER = "X-Request-Id"
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         set_request_context(correlation_id=request.headers.get(CORRELATION_ID_HEADER))
         start = time.perf_counter()
 

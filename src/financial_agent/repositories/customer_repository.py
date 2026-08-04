@@ -35,13 +35,13 @@ class InMemoryCustomerRepository:
                 products=[
                     Product(
                         code="conta_corrente",
-                        name="Conta Corrente",
+                        name="Checking Account",
                         category="conta",
                         owned_by_customer=True,
                     ),
                     Product(
                         code="cartao_black",
-                        name="Cartão Black",
+                        name="Black Card",
                         category="cartao",
                         owned_by_customer=True,
                     ),
@@ -51,13 +51,13 @@ class InMemoryCustomerRepository:
             456: CustomerProfile(
                 user_id=456,
                 full_name="Bruno Lima",
-                segment="varejo",
+                segment="retail",
                 risk_profile=RiskProfile.CONSERVATIVE,
                 account_balance=1_200.50,
                 products=[
                     Product(
                         code="conta_corrente",
-                        name="Conta Corrente",
+                        name="Checking Account",
                         category="conta",
                         owned_by_customer=True,
                     ),
@@ -66,20 +66,20 @@ class InMemoryCustomerRepository:
             ),
             1_140_762_405: CustomerProfile(
                 user_id=1_140_762_405,
-                full_name="Cliente Telegram",
-                segment="varejo",
+                full_name="Telegram Customer",
+                segment="retail",
                 risk_profile=RiskProfile.MODERATE,
                 account_balance=12_000.00,
                 products=[
                     Product(
                         code="conta_corrente",
-                        name="Conta Corrente",
+                        name="Checking Account",
                         category="conta",
                         owned_by_customer=True,
                     ),
                     Product(
                         code="cartao_black",
-                        name="Cartão Black",
+                        name="Black Card",
                         category="cartao",
                         owned_by_customer=True,
                     ),

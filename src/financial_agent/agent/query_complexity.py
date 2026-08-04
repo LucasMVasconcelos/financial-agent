@@ -29,16 +29,13 @@ _COMPLEX_WORD_THRESHOLD = 22
 # action), and comparison/justification requests genuinely need stronger
 # reasoning than a single factual lookup.
 _COMPLEX_SIGNAL_WORDS = (
-    "empréstimo",
-    "emprestimo",
-    "por que",
-    "porque",
+    "loan",
+    "why",
     "compare",
-    "comparar",
-    "diferença",
-    "diferenca",
-    "melhor para mim",
-    "recomenda",
+    "comparison",
+    "difference",
+    "best for me",
+    "recommend",
 )
 
 

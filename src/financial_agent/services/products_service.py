@@ -14,14 +14,14 @@ from financial_agent.domain.models.customer import Product
 from financial_agent.repositories.customer_repository import CustomerRepository
 
 _CATALOG: tuple[Product, ...] = (
-    Product(code="conta_corrente", name="Conta Corrente", category="conta"),
-    Product(code="cartao_black", name="Cartão Black", category="cartao"),
-    Product(code="cartao_gold", name="Cartão Gold", category="cartao"),
-    Product(code="cdb_liquidez_diaria", name="CDB Liquidez Diária", category="renda_fixa"),
+    Product(code="conta_corrente", name="Checking Account", category="conta"),
+    Product(code="cartao_black", name="Black Card", category="cartao"),
+    Product(code="cartao_gold", name="Gold Card", category="cartao"),
+    Product(code="cdb_liquidez_diaria", name="Daily-Liquidity CD", category="renda_fixa"),
     Product(code="tesouro_selic", name="Tesouro Selic", category="renda_fixa"),
-    Product(code="seguro_vida", name="Seguro de Vida", category="seguro"),
-    Product(code="seguro_residencial", name="Seguro Residencial", category="seguro"),
-    Product(code="emprestimo_pessoal", name="Empréstimo Pessoal", category="credito"),
+    Product(code="seguro_vida", name="Life Insurance", category="seguro"),
+    Product(code="seguro_residencial", name="Homeowners Insurance", category="seguro"),
+    Product(code="emprestimo_pessoal", name="Personal Loan", category="credito"),
 )
 
 

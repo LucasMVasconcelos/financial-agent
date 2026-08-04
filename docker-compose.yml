@@ -17,7 +17,7 @@ services:
   # redis-stack-server (not plain redis:7-alpine): the LangGraph checkpointer
   # (langgraph-checkpoint-redis) indexes checkpoints via RediSearch (the
   # FT.* commands) — plain Redis doesn't have that module, checkpoint
-  # save/load fails immediately without it. See "Persistência de estado no
+  # save/load fails immediately without it. See "State persistence in
   # Redis" in the README for why this branch needs it and master doesn't.
   # Pinned (not :latest): the :latest tag on Docker Hub was broken at the
   # time this was set up (container exited immediately with
@@ -35,11 +35,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Tunnel de desenvolvimento: expõe a API publicamente para o Telegram
-  # alcançar o webhook. Usa um domínio estático (NGROK_DOMAIN) para que a
-  # URL não mude a cada restart — diferente de um túnel efêmero (ex.:
-  # trycloudflare.com), aqui o setWebhook do Telegram só precisa ser feito
-  # uma vez. Ver "Configurar o bot do Telegram" no README.
+  # Development tunnel: exposes the API publicly so Telegram can reach the
+  # webhook. Uses a static domain (NGROK_DOMAIN) so the URL doesn't change
+  # on every restart — unlike an ephemeral tunnel (e.g. trycloudflare.com),
+  # here Telegram's setWebhook only needs to be done once. See "Configuring
+  # the Telegram bot" in the README.
   ngrok:
     image: ngrok/ngrok:latest
     container_name: financial-agent-ngrok
@@ -50,7 +50,7 @@ services:
       - "--url=https://${NGROK_DOMAIN}"
       - "api:8000"
     ports:
-      - "4040:4040" # painel local do ngrok (inspecionar requisições recebidas)
+      - "4040:4040" # local ngrok dashboard (inspect incoming requests)
     depends_on:
       api:
         condition: service_healthy

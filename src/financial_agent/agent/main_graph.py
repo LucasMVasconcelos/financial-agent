@@ -98,8 +98,7 @@ from financial_agent.services.products_service import ProductsService
 logger = get_logger(__name__)
 
 _FALLBACK_REPLY = (
-    "Desculpe, tive um problema para processar sua mensagem agora. "
-    "Pode tentar novamente em instantes?"
+    "Sorry, I had a problem processing your message just now. " "Could you try again in a moment?"
 )
 
 _MAX_ITERATIONS = 6
@@ -173,7 +172,7 @@ def _to_langchain_messages(history: ConversationHistory) -> list[AnyMessage]:
 
 def _format_long_term_memories(memories: list[str]) -> str:
     if not memories:
-        return "Nenhuma lembrança de longo prazo disponível ainda."
+        return "No long-term memories available yet."
     return "\n".join(f"- {memory}" for memory in memories)
 
 
@@ -281,10 +280,11 @@ def build_main_graph(
     async def self_correct(state: MainGraphState) -> dict[str, Any]:
         correction = HumanMessage(
             content=(
-                "Uma ou mais ferramentas retornaram um erro estruturado (veja o campo "
-                "'error' acima). Revise o motivo e tente novamente com uma abordagem "
-                "corrigida (outros argumentos, outra ferramenta), ou, se não houver "
-                "como corrigir, explique isso ao cliente em vez de insistir."
+                "One or more tools returned a structured error (see the 'error' "
+                "field above). Review the reason and try again with a corrected "
+                "approach (different arguments, a different tool), or, if there is "
+                "no way to fix it, explain that to the customer instead of "
+                "insisting."
             )
         )
         return {"messages": [correction], "tool_retry_count": state["tool_retry_count"] + 1}
@@ -338,7 +338,7 @@ async def run_main_graph_turn(
                 "chat_history": _to_langchain_messages(history),
                 "input": user_message,
                 "current_date": datetime.now(UTC).date().isoformat(),
-                "conversation_summary": history.summary or "Nenhum resumo disponível ainda.",
+                "conversation_summary": history.summary or "No summary available yet.",
                 "long_term_memories": _format_long_term_memories(history.long_term_memories),
             }
         ).to_messages(),

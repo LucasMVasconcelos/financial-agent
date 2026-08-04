@@ -16,18 +16,16 @@ def gateway() -> TelegramGateway:
 class TestTelegramGateway:
     @respx.mock
     async def test_send_message_happy_path(self, gateway: TelegramGateway) -> None:
-        route = respx.post(
-            "https://api.telegram.org/bottest-token/sendMessage"
-        ).mock(return_value=httpx.Response(200, json={"ok": True}))
+        route = respx.post("https://api.telegram.org/bottest-token/sendMessage").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
 
         await gateway.send_message(chat_id=42, text="hello")
 
         assert route.called
 
     @respx.mock
-    async def test_send_message_upstream_error_on_failure(
-        self, gateway: TelegramGateway
-    ) -> None:
+    async def test_send_message_upstream_error_on_failure(self, gateway: TelegramGateway) -> None:
         respx.post("https://api.telegram.org/bottest-token/sendMessage").mock(
             return_value=httpx.Response(500, json={"ok": False})
         )

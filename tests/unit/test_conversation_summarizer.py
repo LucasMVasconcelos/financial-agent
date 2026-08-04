@@ -22,30 +22,30 @@ def _message(content: str) -> ConversationMessage:
 
 class TestConversationSummarizer:
     async def test_returns_the_model_response_stripped(self) -> None:
-        llm = FakeListChatModel(responses=["  Cliente perguntou sobre CDB.  "])
+        llm = FakeListChatModel(responses=["  Customer asked about CDs.  "])
         summarizer = ConversationSummarizer(llm)
 
         result = await summarizer.summarize(
-            existing_summary=None, new_turns=[_message("como funciona o cdb?")]
+            existing_summary=None, new_turns=[_message("how does a CD work?")]
         )
 
-        assert result == "Cliente perguntou sobre CDB."
+        assert result == "Customer asked about CDs."
 
     async def test_works_with_an_existing_summary_and_multiple_turns(self) -> None:
-        llm = FakeListChatModel(responses=["Resumo atualizado."])
+        llm = FakeListChatModel(responses=["Updated summary."])
         summarizer = ConversationSummarizer(llm)
 
         result = await summarizer.summarize(
-            existing_summary="Cliente já perguntou sobre Tesouro Selic.",
-            new_turns=[_message("e sobre CDB?"), _message("obrigado!")],
+            existing_summary="Customer already asked about Tesouro Selic.",
+            new_turns=[_message("what about CDs?"), _message("thanks!")],
         )
 
-        assert result == "Resumo atualizado."
+        assert result == "Updated summary."
 
     async def test_empty_new_turns_still_produces_a_summary(self) -> None:
-        llm = FakeListChatModel(responses=["Sem novidades."])
+        llm = FakeListChatModel(responses=["Nothing new."])
         summarizer = ConversationSummarizer(llm)
 
-        result = await summarizer.summarize(existing_summary="algo", new_turns=[])
+        result = await summarizer.summarize(existing_summary="something", new_turns=[])
 
-        assert result == "Sem novidades."
+        assert result == "Nothing new."

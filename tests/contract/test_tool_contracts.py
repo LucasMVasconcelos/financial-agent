@@ -179,13 +179,13 @@ class TestSearchKnowledgeBaseToolContract:
     async def test_success_envelope_matches_output_schema(self) -> None:
         snippet = KnowledgeSnippet(
             title="Tesouro Selic",
-            content="Título público pós-fixado que acompanha a Selic.",
+            content="Floating-rate government bond that tracks the Selic rate.",
             source="tesouro_selic",
             score=0.87,
         )
         tool = self._build(snippets=[snippet])
 
-        raw = await tool.ainvoke({"query": "como funciona o tesouro selic"})
+        raw = await tool.ainvoke({"query": "how does tesouro selic work"})
         envelope = json.loads(raw)
 
         assert envelope["success"] is True
@@ -194,9 +194,7 @@ class TestSearchKnowledgeBaseToolContract:
         assert result["source"] == "tesouro_selic"
 
     async def test_upstream_error_structured(self) -> None:
-        tool = self._build(
-            error=DomainToolError(ToolErrorCode.UPSTREAM_ERROR, "vector store down")
-        )
+        tool = self._build(error=DomainToolError(ToolErrorCode.UPSTREAM_ERROR, "vector store down"))
 
         raw = await tool.ainvoke({"query": "tesouro selic"})
         envelope = json.loads(raw)

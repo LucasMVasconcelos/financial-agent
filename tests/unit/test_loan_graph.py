@@ -19,9 +19,7 @@ _THRESHOLD = 50_000.0
 
 def _build_graph(threshold: float = _THRESHOLD):
     repo = InMemoryCustomerRepository()
-    return build_loan_graph(
-        customer_service=CustomerService(repo), approval_threshold=threshold
-    )
+    return build_loan_graph(customer_service=CustomerService(repo), approval_threshold=threshold)
 
 
 def _initial_state(application_id: str, amount: float) -> dict:

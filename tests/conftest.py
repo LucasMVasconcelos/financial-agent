@@ -30,6 +30,11 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SERVICE_API_KEY", "test-service-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("APP_ENV", "local")
+    # Tests must stay network-free regardless of what a developer's local
+    # .env happens to set — without this, USE_REDIS=true in .env (e.g. left
+    # on after a manual docker-compose/Redis Stack validation) makes every
+    # test try to resolve the "redis" hostname and fail outside Docker.
+    monkeypatch.setenv("USE_REDIS", "false")
     get_settings.cache_clear()
 
     # The knowledge base is embedded once at startup (build_app_state) — swap

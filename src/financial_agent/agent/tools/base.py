@@ -78,14 +78,10 @@ async def run_tool(
             result = await handler()
             envelope: ToolEnvelope[T] = ToolEnvelope.ok(result)
         except DomainToolError as exc:
-            logger.warning(
-                "tool_structured_error", tool=tool_name, user_id=user_id, code=exc.code
-            )
+            logger.warning("tool_structured_error", tool=tool_name, user_id=user_id, code=exc.code)
             envelope = ToolEnvelope.fail(exc)
         except Exception as exc:
-            logger.error(
-                "tool_unexpected_error", tool=tool_name, user_id=user_id, error=str(exc)
-            )
+            logger.error("tool_unexpected_error", tool=tool_name, user_id=user_id, error=str(exc))
             envelope = ToolEnvelope.fail(
                 DomainToolError(ToolErrorCode.UNKNOWN_ERROR, "Unexpected internal error.")
             )

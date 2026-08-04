@@ -3,8 +3,8 @@
 The main agent (`agent/main_graph.py`) may take a few seconds per turn —
 it calls `get_customer_profile` and `get_next_best_action`, each a real
 (simulated) network round-trip, before the LLM can compose a final answer.
-Per the product requirement ("enquanto o processo aguarda a resposta do
-NBA, deixe um agente para ir conversando com o usuário"), the webhook
+Per the product requirement ("while the process waits for the NBA's
+response, have an agent keep chatting with the user"), the webhook
 handler (`api/routers/telegram_webhook.py`) runs this lightweight,
 tool-less chain concurrently with the main agent: it immediately sends a
 Telegram "typing..." action plus one short acknowledgement message, then
@@ -27,11 +27,11 @@ _FILLER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Você é o mesmo assistente financeiro do banco no Telegram. O cliente "
-            "acabou de enviar uma mensagem e o sistema está preparando uma resposta "
-            "completa (pode levar alguns segundos). Gere apenas uma frase curta e "
-            "acolhedora reconhecendo a mensagem do cliente, sem responder a "
-            "pergunta em si e sem mencionar sistemas internos.\n\n"
+            "You are the same bank financial assistant on Telegram. The customer "
+            "just sent a message and the system is preparing a complete response "
+            "(it may take a few seconds). Generate only a short, warm sentence "
+            "acknowledging the customer's message, without answering the question "
+            "itself and without mentioning internal systems.\n\n"
             "{format_instructions}",
         ),
         ("human", "{input}"),

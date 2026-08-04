@@ -113,7 +113,7 @@ def _compile_graph(
 
 def _initial_state(user_id: int = KNOWN_USER_ID) -> dict[str, Any]:
     return {
-        "messages": [("human", "Olá")],
+        "messages": [("human", "Hello")],
         "user_id": user_id,
         "iteration": 0,
         "tool_retry_count": 0,
@@ -123,12 +123,12 @@ def _initial_state(user_id: int = KNOWN_USER_ID) -> dict[str, Any]:
 
 class TestMainGraphReactCycle:
     async def test_no_tool_call_finalizes_in_one_pass(self) -> None:
-        graph = _compile_graph(responses=[AIMessage(content="Olá! Como posso ajudar?")])
+        graph = _compile_graph(responses=[AIMessage(content="Hello! How can I help?")])
         config = {"configurable": {"thread_id": "t-1"}}
 
         result = await graph.ainvoke(_initial_state(), config)
 
-        assert result["final_response"] == "Olá! Como posso ajudar?"
+        assert result["final_response"] == "Hello! How can I help?"
         assert result["iteration"] == 1
 
     async def test_tool_call_then_final_answer_is_a_real_cycle(self) -> None:
@@ -138,14 +138,14 @@ class TestMainGraphReactCycle:
                     content="",
                     tool_calls=[_tool_call("get_customer_profile", {}, "call_1")],
                 ),
-                AIMessage(content="Seu perfil está ótimo!"),
+                AIMessage(content="Your profile looks great!"),
             ]
         )
         config = {"configurable": {"thread_id": "t-2"}}
 
         result = await graph.ainvoke(_initial_state(), config)
 
-        assert result["final_response"] == "Seu perfil está ótimo!"
+        assert result["final_response"] == "Your profile looks great!"
         # Two visits to `reason` is the cycle: reason -> tool -> reason -> finalize.
         assert result["iteration"] == 2
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
@@ -170,14 +170,14 @@ class TestMainGraphDeterministicValidation:
         graph = _compile_graph(
             responses=[
                 AIMessage(content="", tool_calls=[_tool_call("delete_everything", {}, "call_bad")]),
-                AIMessage(content="Não posso fazer isso, mas posso ajudar de outra forma."),
+                AIMessage(content="I can't do that, but I can help in another way."),
             ]
         )
         config = {"configurable": {"thread_id": "t-4"}}
 
         result = await graph.ainvoke(_initial_state(), config)
 
-        assert result["final_response"] == "Não posso fazer isso, mas posso ajudar de outra forma."
+        assert result["final_response"] == "I can't do that, but I can help in another way."
         assert result["tool_retry_count"] == 1
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert '"success":false' in tool_messages[0].content
@@ -190,14 +190,14 @@ class TestMainGraphDeterministicValidation:
                     content="",
                     tool_calls=[_tool_call("request_loan", {"amount": -5}, "call_bad_amount")],
                 ),
-                AIMessage(content="Não é possível solicitar esse valor."),
+                AIMessage(content="That amount can't be requested."),
             ]
         )
         config = {"configurable": {"thread_id": "t-5"}}
 
         result = await graph.ainvoke(_initial_state(), config)
 
-        assert result["final_response"] == "Não é possível solicitar esse valor."
+        assert result["final_response"] == "That amount can't be requested."
         assert result["tool_retry_count"] == 1
 
 
@@ -208,7 +208,7 @@ class TestMainGraphToolSelfCorrection:
                 AIMessage(
                     content="", tool_calls=[_tool_call("get_customer_profile", {}, "call_1")]
                 ),
-                AIMessage(content="Não encontrei seu cadastro, mas posso ajudar de outra forma."),
+                AIMessage(content="I couldn't find your records, but I can help in another way."),
             ],
             user_id=UNKNOWN_USER_ID,
         )
@@ -217,7 +217,7 @@ class TestMainGraphToolSelfCorrection:
         result = await graph.ainvoke(_initial_state(user_id=UNKNOWN_USER_ID), config)
 
         assert result["final_response"] == (
-            "Não encontrei seu cadastro, mas posso ajudar de outra forma."
+            "I couldn't find your records, but I can help in another way."
         )
         assert result["tool_retry_count"] == 1
         assert result["iteration"] == 2
@@ -242,19 +242,19 @@ class TestMainGraphToolSelfCorrection:
 
 class TestMainGraphCheckpointing:
     async def test_state_is_checkpointed_per_thread_id(self) -> None:
-        graph = _compile_graph(responses=[AIMessage(content="Oi!")])
+        graph = _compile_graph(responses=[AIMessage(content="Hi!")])
         config = {"configurable": {"thread_id": "t-checkpoint"}}
 
         await graph.ainvoke(_initial_state(), config)
         snapshot = await graph.aget_state(config)
 
-        assert snapshot.values["final_response"] == "Oi!"
+        assert snapshot.values["final_response"] == "Hi!"
 
     async def test_different_threads_do_not_share_state(self) -> None:
         graph = _compile_graph(
             responses=[
                 AIMessage(content="", tool_calls=[_tool_call("get_customer_profile", {}, "c1")]),
-                AIMessage(content="resposta A"),
+                AIMessage(content="response A"),
             ]
         )
         cfg_a = {"configurable": {"thread_id": "t-a"}}
@@ -264,23 +264,23 @@ class TestMainGraphCheckpointing:
         state_a = await graph.aget_state(cfg_a)
         state_b = await graph.aget_state(cfg_b)
 
-        assert state_a.values["final_response"] == "resposta A"
+        assert state_a.values["final_response"] == "response A"
         assert state_b.values == {}  # thread "t-b" was never invoked
 
 
 class TestRunMainGraphTurn:
     async def test_returns_final_response_from_the_graph(self) -> None:
-        graph = _compile_graph(responses=[AIMessage(content="Recomendamos investir em CDB.")])
+        graph = _compile_graph(responses=[AIMessage(content="We recommend investing in a CD.")])
 
         reply = await run_main_graph_turn(
             graph=graph,
             thread_id="turn-1",
             user_id=KNOWN_USER_ID,
-            user_message="O que você recomenda?",
+            user_message="What do you recommend?",
             history=ConversationHistory(user_id=KNOWN_USER_ID),
         )
 
-        assert reply == "Recomendamos investir em CDB."
+        assert reply == "We recommend investing in a CD."
 
     async def test_graph_exception_returns_fallback_reply(self) -> None:
         class _BrokenGraph:
@@ -291,8 +291,8 @@ class TestRunMainGraphTurn:
             graph=_BrokenGraph(),  # type: ignore[arg-type]
             thread_id="turn-2",
             user_id=KNOWN_USER_ID,
-            user_message="oi",
+            user_message="hi",
             history=ConversationHistory(user_id=KNOWN_USER_ID),
         )
 
-        assert "problema" in reply.lower()
+        assert "problem" in reply.lower()

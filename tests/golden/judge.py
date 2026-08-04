@@ -29,18 +29,18 @@ _JUDGE_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "Você avalia se a resposta de um assistente financeiro satisfaz UM critério "
-            "específico (a rubrica). Seja rigoroso e objetivo: o objetivo é pegar regressão "
-            "de comportamento, não elogiar a resposta. Avalie apenas o que a rubrica pede, "
-            "nada além disso — não penalize por estilo ou tamanho se a rubrica não menciona "
-            "isso. Em caso de dúvida genuína, reprove e explique a dúvida.",
+            "You evaluate whether a financial assistant's response satisfies ONE specific "
+            "criterion (the rubric). Be strict and objective: the goal is to catch behavior "
+            "regressions, not to praise the response. Evaluate only what the rubric asks "
+            "for, nothing beyond that — don't penalize for style or length if the rubric "
+            "doesn't mention it. In case of genuine doubt, fail it and explain the doubt.",
         ),
         (
             "human",
-            "Cenário: {description}\n\n"
-            "Rubrica (critério a avaliar): {rubric}\n\n"
-            "Resposta do assistente a ser avaliada:\n{response}\n\n"
-            "A resposta satisfaz a rubrica?",
+            "Scenario: {description}\n\n"
+            "Rubric (criterion to evaluate): {rubric}\n\n"
+            "Assistant's response to be evaluated:\n{response}\n\n"
+            "Does the response satisfy the rubric?",
         ),
     ]
 )

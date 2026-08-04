@@ -61,21 +61,21 @@ class MockNBAModelGateway:
         ):
             action = NextBestActionType.INVEST_CDB
             reason = (
-                f"Cliente possui saldo elevado (R$ {customer.account_balance:,.2f}) "
-                "parado em conta corrente."
+                f"Customer has a high balance (R$ {customer.account_balance:,.2f}) "
+                "sitting idle in checking."
             )
             confidence = 0.92
         elif customer.account_balance < self._LOW_BALANCE_THRESHOLD_BRL:
             action = NextBestActionType.BUILD_EMERGENCY_FUND
-            reason = "Saldo em conta corrente está abaixo do recomendado para imprevistos."
+            reason = "Checking-account balance is below the recommended buffer for emergencies."
             confidence = 0.81
         elif "cartao_black" in owned_codes:
             action = NextBestActionType.INCREASE_CREDIT_LIMIT
-            reason = "Cliente possui bom histórico de uso do cartão premium."
+            reason = "Customer has a good usage history with the premium card."
             confidence = 0.74
         else:
             action = NextBestActionType.INVEST_FIXED_INCOME
-            reason = "Perfil de risco compatível com produtos de renda fixa."
+            reason = "Risk profile compatible with fixed-income products."
             confidence = 0.68
 
         jitter = random.Random(customer.user_id).uniform(-0.03, 0.03)

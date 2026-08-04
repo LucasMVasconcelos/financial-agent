@@ -13,9 +13,7 @@ class KnowledgeBaseService:
     def __init__(self, knowledge_base_gateway: KnowledgeBaseGateway) -> None:
         self._knowledge_base_gateway = knowledge_base_gateway
 
-    async def search(
-        self, query: str, *, top_k: int = DEFAULT_TOP_K
-    ) -> list[KnowledgeSnippet]:
+    async def search(self, query: str, *, top_k: int = DEFAULT_TOP_K) -> list[KnowledgeSnippet]:
         normalized_query = query.strip()
         if len(normalized_query) < _MIN_QUERY_LENGTH:
             raise ToolError(

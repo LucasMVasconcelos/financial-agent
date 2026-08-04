@@ -113,7 +113,7 @@ class LoanService:
         """
         try:
             text = (
-                f"Atualização sobre seu pedido de empréstimo de "
+                f"Update on your loan request for "
                 f"R$ {application.amount:,.2f}: {application.reason}"
             )
             # In a private Telegram chat with the bot, chat_id == user_id.

@@ -23,7 +23,9 @@ WEBHOOK_URL = "/webhook/telegram"
 VALID_SECRET = "test-webhook-secret"
 
 
-def _update_payload(*, text: str = "Olá, quero uma recomendação", user_id: int = 123) -> dict:
+def _update_payload(
+    *, text: str = "Hello, I would like a recommendation", user_id: int = 123
+) -> dict:
     return {
         "update_id": 1,
         "message": {
@@ -44,7 +46,7 @@ def _stub_agent_and_telegram(monkeypatch: pytest.MonkeyPatch, app_state: AppStat
     )
 
     async def _fake_run_main_graph_turn(**_kwargs: object) -> str:
-        return "Recomendamos investir em CDB."
+        return "We recommend investing in a CD."
 
     monkeypatch.setattr(
         "financial_agent.api.routers.telegram_webhook.run_main_graph_turn",
@@ -52,7 +54,7 @@ def _stub_agent_and_telegram(monkeypatch: pytest.MonkeyPatch, app_state: AppStat
     )
 
     app_state.filler_agent.generate = AsyncMock(  # type: ignore[method-assign]
-        return_value=FillerReply(message="Já te respondo!")
+        return_value=FillerReply(message="I'll get right back to you!")
     )
     app_state.telegram_gateway.send_message = AsyncMock()  # type: ignore[method-assign]
     app_state.telegram_gateway.send_typing_action = AsyncMock()  # type: ignore[method-assign]
@@ -116,13 +118,13 @@ class TestTelegramWebhookHappyPath:
         # reply — no filler, since the customer never had to wait.
         send_message_mock = app_state.telegram_gateway.send_message  # type: ignore[attr-defined]
         send_message_mock.assert_awaited_once()
-        assert send_message_mock.await_args.kwargs["text"] == "Recomendamos investir em CDB."
+        assert send_message_mock.await_args.kwargs["text"] == "We recommend investing in a CD."
         app_state.filler_agent.generate.assert_not_called()  # type: ignore[attr-defined]
 
         history = await app_state.conversation_service.get_history(123, current_message="oi")
         assert [m.content for m in history.messages] == [
-            "Olá, quero uma recomendação",
-            "Recomendamos investir em CDB.",
+            "Hello, I would like a recommendation",
+            "We recommend investing in a CD.",
         ]
 
 
@@ -134,7 +136,7 @@ class TestTelegramWebhookFiller:
 
         async def _slow_run_main_graph_turn(**_kwargs: object) -> str:
             await asyncio.sleep(0.2)
-            return "Recomendamos investir em CDB."
+            return "We recommend investing in a CD."
 
         monkeypatch.setattr(
             "financial_agent.api.routers.telegram_webhook.run_main_graph_turn",
@@ -152,8 +154,8 @@ class TestTelegramWebhookFiller:
         send_message_mock = app_state.telegram_gateway.send_message  # type: ignore[attr-defined]
         assert send_message_mock.await_count == 2
         sent_texts = [call.kwargs["text"] for call in send_message_mock.await_args_list]
-        assert "Recomendamos investir em CDB." in sent_texts
-        assert "Já te respondo!" in sent_texts
+        assert "We recommend investing in a CD." in sent_texts
+        assert "I'll get right back to you!" in sent_texts
         app_state.filler_agent.generate.assert_awaited_once()  # type: ignore[attr-defined]
 
 

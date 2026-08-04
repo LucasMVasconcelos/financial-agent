@@ -31,9 +31,9 @@ class TestSemanticMemoryService:
         gateway = _StubGateway()
         service = SemanticMemoryService(gateway)
 
-        await service.remember(123, "cliente perguntou sobre CDB")
+        await service.remember(123, "customer asked about CDs")
 
-        assert gateway.remembered == [(123, "cliente perguntou sobre CDB")]
+        assert gateway.remembered == [(123, "customer asked about CDs")]
 
     async def test_remember_skips_blank_text(self) -> None:
         gateway = _StubGateway()
@@ -46,9 +46,9 @@ class TestSemanticMemoryService:
     async def test_recall_delegates_to_gateway(self) -> None:
         service = SemanticMemoryService(_StubGateway())
 
-        results = await service.recall(123, "portabilidade")
+        results = await service.recall(123, "portability")
 
-        assert results == ["memory-for-portabilidade"]
+        assert results == ["memory-for-portability"]
 
     async def test_recall_skips_blank_query(self) -> None:
         service = SemanticMemoryService(_StubGateway())
@@ -58,11 +58,11 @@ class TestSemanticMemoryService:
     async def test_remember_swallows_gateway_failures(self) -> None:
         service = SemanticMemoryService(_FailingGateway())
 
-        await service.remember(123, "algo")  # must not raise
+        await service.remember(123, "something")  # must not raise
 
     async def test_recall_swallows_gateway_failures_and_returns_empty(self) -> None:
         service = SemanticMemoryService(_FailingGateway())
 
-        results = await service.recall(123, "algo")
+        results = await service.recall(123, "something")
 
         assert results == []

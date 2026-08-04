@@ -15,7 +15,7 @@ constraints on *behavior* — which is exactly the split this schema encodes:
     answer. Deliberately not exact-text matching: the same prompt can (and
     should be expected to) produce different wording across runs, even at
     low temperature. What must stay constant is *content*, not phrasing —
-    e.g. a loan pending human approval must never say "aprovado", no matter
+    e.g. a loan pending human approval must never say "approved", no matter
     how the sentence around it is worded.
   * `rubric` — an optional, free-text criterion graded by a separate LLM
     call (`tests/golden/judge.py`), for the qualities substring matching

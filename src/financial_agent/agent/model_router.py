@@ -3,8 +3,8 @@
 Not every LLM call in this system carries the same stakes. Deciding which
 tool to call, following the compliance guardrails, and composing the final
 answer to a customer needs the strongest available model — that's a
-regulated-adjacent, high-stakes activity. Acknowledging "já te respondo!"
-while the real answer is being prepared, or compressing ten old chat
+regulated-adjacent, high-stakes activity. Acknowledging "I'll get right
+back to you!" while the real answer is being prepared, or compressing ten old chat
 messages into two sentences, does not; a smaller/cheaper model does those
 just as well, faster and for a fraction of the cost.
 
